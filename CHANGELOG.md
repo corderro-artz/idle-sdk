@@ -20,3 +20,4 @@
 - Added scene layer model and diff engine with tests.
 - Added achievements and collections core systems with tests.
 - Added audio system core with mixer and registry.
+- Added quest system core with event integration and tests.

@@ -20,3 +20,4 @@
 - 2026-01-24: Implemented scene layer model and diff engine with tests.
 - 2026-01-24: Implemented achievements and collections core systems with tests.
 - 2026-01-24: Implemented audio system core with registry and mixer.
+- 2026-01-24: Implemented quest system core with evented progress updates and tests.
