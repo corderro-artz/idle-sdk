@@ -19,3 +19,4 @@
 - Added equipment loadout system with gear bonuses and tests.
 - Added scene layer model and diff engine with tests.
 - Added achievements and collections core systems with tests.
+- Added audio system core with mixer and registry.
