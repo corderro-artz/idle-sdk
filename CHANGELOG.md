@@ -8,3 +8,4 @@
 - Recorded Phase 2 architecture decisions (renderer, persistence, plugin packaging).
 - Added .NET solution scaffolding with core library and tests.
 - Implemented engine spine (timing, events, module registry) with tests.
+- Added SQLite-backed snapshot persistence with tests.

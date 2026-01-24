@@ -8,3 +8,4 @@
 - 2026-01-24: Architecture decisions recorded: renderer = WebAssembly (C# → WASM + TS/JS renderer), persistence = SQLite, plugin packaging = NuGet package.
 - 2026-01-24: Created .NET solution idle-sdk.sln with core library project and xUnit test project (scaffolding).
 - 2026-01-24: Implemented engine spine components (SimulationClock, TickScheduler, EventHub, Module system) with xUnit coverage; tests pass.
+- 2026-01-24: Added snapshot persistence interfaces and SQLite-backed store with tests.
