@@ -64,6 +64,18 @@
 
                 <TextBlock Text="Scene Diff" FontWeight="Bold" />
                 <ListBox ItemsSource="{Binding SceneDiffLines}" Height="100" />
+
+                <TextBlock Text="Crafting" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding CraftingLines}" Height="80" />
+
+                <TextBlock Text="Trade" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding TradeLines}" Height="80" />
+
+                <TextBlock Text="Layered Generator" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding GeneratorLines}" Height="80" />
+
+                <TextBlock Text="Compendium" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding CompendiumLines}" Height="80" />
             </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -7,17 +7,21 @@ using IdleSdk.Core.Achievements;
 using IdleSdk.Core.Audio;
 using IdleSdk.Core.Collections;
 using IdleSdk.Core.Combat;
+using IdleSdk.Core.Compendium;
 using IdleSdk.Core.Economy;
 using IdleSdk.Core.Equipment;
+using IdleSdk.Core.Crafting;
 using IdleSdk.Core.Input;
 using IdleSdk.Core.Items;
 using IdleSdk.Core.Offline;
 using IdleSdk.Core.Quests;
 using IdleSdk.Core.Scene;
+using IdleSdk.Core.Trade;
 using IdleSdk.Core.Skills;
 using IdleSdk.Core.Sandbox;
 using IdleSdk.Core.Timing;
 using IdleSdk.Core.World;
+using IdleSdk.Core.Generator;
 using IdleSdk.Demo.Infrastructure;
 
 namespace IdleSdk.Demo.ViewModels;
@@ -38,6 +42,11 @@ public sealed class DemoViewModel : INotifyPropertyChanged
     private readonly WalletService _walletService;
     private readonly CombatSystem _combatSystem;
     private readonly CombatEncounter _combatEncounter;
+    private readonly CraftingService _craftingService;
+    private readonly TradeService _tradeService;
+    private readonly LayeredGenerator _layeredGenerator = new();
+    private readonly BestiaryRegistry _bestiaryRegistry = new();
+    private readonly ItemCompendiumRegistry _itemCompendiumRegistry = new();
     private readonly SceneDiffEngine _sceneDiffEngine = new();
     private readonly SandboxConsole _sandboxConsole = new();
     private readonly AudioService _audioService;
@@ -89,6 +98,15 @@ public sealed class DemoViewModel : INotifyPropertyChanged
         currencyRegistry.Register(new CurrencyDefinition("gold", "Gold", false));
         _walletService = new WalletService(currencyRegistry);
 
+        _craftingService = new CraftingService(_inventoryService);
+        _craftingService.Register(new RecipeDefinition("plank", "Plank", new Dictionary<string, int> { ["log"] = 2 }, "log", 1));
+
+        _tradeService = new TradeService(_inventoryService, _walletService);
+        _tradeService.ListOffer(new TradeOffer("offer-log", "log", 1, 2));
+
+        _bestiaryRegistry.Register(new BestiaryEntry("slime", "Slime", "A weak creature"));
+        _itemCompendiumRegistry.Register(new ItemCompendiumEntry("log", "Log", "Basic wood"));
+
         _combatSystem = new CombatSystem();
         _combatEncounter = new CombatEncounter(new List<CombatantState>
         {
@@ -124,6 +142,10 @@ public sealed class DemoViewModel : INotifyPropertyChanged
     public ObservableCollection<string> WorldLines { get; } = new();
     public ObservableCollection<string> SceneLines { get; } = new();
     public ObservableCollection<string> SceneDiffLines { get; } = new();
+    public ObservableCollection<string> CraftingLines { get; } = new();
+    public ObservableCollection<string> TradeLines { get; } = new();
+    public ObservableCollection<string> GeneratorLines { get; } = new();
+    public ObservableCollection<string> CompendiumLines { get; } = new();
 
     public RelayCommand TickCommand { get; }
     public RelayCommand OfflineCommand { get; }
@@ -266,6 +288,10 @@ public sealed class DemoViewModel : INotifyPropertyChanged
         UpdateAchievements();
         UpdateCollections();
                 UpdateWallets();
+        UpdateCrafting();
+        UpdateTrade();
+        UpdateGenerator();
+        UpdateCompendium();
                 RefreshSceneDisplay();
     }
 
@@ -325,6 +351,50 @@ public sealed class DemoViewModel : INotifyPropertyChanged
         WalletLines.Clear();
         var wallet = _walletService.GetOrCreateWallet(ProfileId);
         WalletLines.Add($"Gold: {wallet.GetBalance("gold")}");
+    }
+
+    private void UpdateCrafting()
+    {
+        CraftingLines.Clear();
+        CraftingLines.Add("Recipe: 2x log -> 1x log (demo)");
+    }
+
+    private void UpdateTrade()
+    {
+        TradeLines.Clear();
+        foreach (var offer in _tradeService.Offers)
+        {
+            TradeLines.Add($"{offer.Id}: {offer.Quantity}x {offer.ItemId} for {offer.Price} gold");
+        }
+    }
+
+    private void UpdateGenerator()
+    {
+        GeneratorLines.Clear();
+        var layers = new List<LayerDefinition>
+        {
+            new("base", new Dictionary<string, int> { ["A"] = 1, ["B"] = 1 }),
+            new("hat", new Dictionary<string, int> { ["Cap"] = 2, ["Crown"] = 1 })
+        };
+
+        var result = _layeredGenerator.Generate(layers, 7);
+        foreach (var entry in result)
+        {
+            GeneratorLines.Add($"{entry.Key}: {entry.Value}");
+        }
+    }
+
+    private void UpdateCompendium()
+    {
+        CompendiumLines.Clear();
+        foreach (var entry in _bestiaryRegistry.Entries)
+        {
+            CompendiumLines.Add($"Bestiary: {entry.Name}");
+        }
+        foreach (var entry in _itemCompendiumRegistry.Entries)
+        {
+            CompendiumLines.Add($"Item: {entry.Name}");
+        }
     }
 
     private void ExecuteSandbox(string command)
