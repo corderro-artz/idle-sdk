@@ -16,3 +16,4 @@
 - Added world/universe hierarchy core and registry with tests.
 - Added multi-currency wallet system with tests.
 - Added item registry and inventory system with tests.
+- Added equipment loadout system with gear bonuses and tests.
