@@ -13,3 +13,4 @@
 - 2026-01-24: Implemented action system core (registry, runner, definitions) with tests.
 - 2026-01-24: Implemented skill system core (registry, XP curve, progression) with tests.
 - 2026-01-24: Implemented combat system core (tick-based resolution) with tests.
+- 2026-01-24: Implemented world/universe hierarchy core and registry with tests.

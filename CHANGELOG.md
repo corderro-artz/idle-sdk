@@ -13,3 +13,4 @@
 - Added action system core registry and runner with tests.
 - Added skill system core with XP curve and tests.
 - Added combat system core with tick resolution and tests.
+- Added world/universe hierarchy core and registry with tests.
