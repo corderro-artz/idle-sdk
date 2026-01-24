@@ -15,3 +15,4 @@
 - Added combat system core with tick resolution and tests.
 - Added world/universe hierarchy core and registry with tests.
 - Added multi-currency wallet system with tests.
+- Added item registry and inventory system with tests.
