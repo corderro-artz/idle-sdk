@@ -25,3 +25,4 @@
 - 2026-01-24: Implemented developer sandbox core with runtime inspector and tests.
 - 2026-01-24: Implemented account/profile system core with tests.
 - 2026-01-24: Implemented offline progression reconciler with tests.
+- 2026-01-24: Defined demo requirements: Avalonia desktop UI with minimal Melvor-style view and full feature wiring.

@@ -112,6 +112,17 @@
 - Acceptance tests:
    - End-to-end simulation replay with known outputs.
 
+## Demo Implementation Requirements
+- Demo goal: Minimal Melvor-style idle clone showcasing engine capabilities with a game view area reserved for future background/character/equipment sprites.
+- UI stack: Avalonia desktop application.
+- Game view: Fixed panel with placeholder background and character silhouette; exposes scene layer entries and diffs.
+- Required feature wiring (minimum):
+   - Actions + Skills + Combat (tick-based loop, XP gains, basic combat tick output).
+   - World + Scene layer model (universe/world/region/zone/node presentation, scene diff output).
+   - Inventory + Equipment + Economy (currency wallet, items, gear slots).
+   - Quests + Achievements + Collections (progress updates visible in UI).
+- Data: In-memory demo data packs (no external content required).
+
 ## Rollout & Migration
 - Migration steps:
    - Versioned schema upgrades with migration hooks per module.

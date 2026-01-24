@@ -25,3 +25,4 @@
 - Added developer sandbox core with runtime inspector and tests.
 - Added account/profile system core with tests.
 - Added offline progression reconciler with tests.
+- Added demo implementation requirements to spec.
