@@ -12,3 +12,4 @@
 - Added JSON schema-based data pack validation with tests.
 - Added action system core registry and runner with tests.
 - Added skill system core with XP curve and tests.
+- Added combat system core with tick resolution and tests.
