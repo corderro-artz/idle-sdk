@@ -123,6 +123,8 @@ public sealed class DemoViewModel : INotifyPropertyChanged
         ConfigureActions();
         ConfigureSandbox();
         ConfigureHotkeys();
+        _sandboxConsole.Enable();
+        SandboxStatus = "Enabled";
         UpdateAllDisplays();
 
         TickCommand = new RelayCommand(TickOnce);

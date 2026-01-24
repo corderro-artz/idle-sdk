@@ -11,10 +11,10 @@
         <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="8" Background="#20252b" CornerRadius="6">
             <DockPanel LastChildFill="False" Margin="4,0">
                 <StackPanel Orientation="Horizontal" Spacing="8" DockPanel.Dock="Left">
-                    <Button Content="Tick" Command="{Binding TickCommand}" />
-                    <Button Content="Offline 10s" Command="{Binding OfflineCommand}" />
-                    <Button Content="Toggle Sandbox" Command="{Binding ToggleSandboxCommand}" />
-                    <Button Content="Add Gold" Command="{Binding SandboxAddGoldCommand}" />
+                    <Button Content="⏱ Tick" Command="{Binding TickCommand}" />
+                    <Button Content="⏲ Offline 10s" Command="{Binding OfflineCommand}" />
+                    <Button Content="🧪 Sandbox" Command="{Binding ToggleSandboxCommand}" />
+                    <Button Content="💰 Add Gold" Command="{Binding SandboxAddGoldCommand}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" DockPanel.Dock="Right">
                     <TextBlock Text="Sandbox" VerticalAlignment="Center" />
@@ -26,14 +26,14 @@
         <StackPanel Grid.Row="1" Grid.Column="0" Spacing="10">
             <Border Background="#1b1f24" CornerRadius="6" Padding="10">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="World" FontWeight="Bold" />
+                    <TextBlock Text="🗺 World" FontWeight="Bold" />
                     <ListBox ItemsSource="{Binding WorldLines}" Height="140" />
                 </StackPanel>
             </Border>
 
             <Border Background="#1b1f24" CornerRadius="6" Padding="10">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Skills" FontWeight="Bold" />
+                    <TextBlock Text="📈 Skills" FontWeight="Bold" />
                     <ListBox ItemsSource="{Binding SkillLines}" Height="100" />
                 </StackPanel>
             </Border>
@@ -42,62 +42,62 @@
         <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="10">
             <Border Background="#1b1f24" CornerRadius="6" Padding="10">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Game View (placeholder)" FontWeight="Bold" />
+                    <TextBlock Text="🎮 Game View (placeholder)" FontWeight="Bold" />
                     <Border Height="220" Background="#2a3037" CornerRadius="4" Padding="8">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Scene Elements" FontWeight="Bold" />
+                            <TextBlock Text="🧩 Scene Elements" FontWeight="Bold" />
                             <ListBox ItemsSource="{Binding SceneLines}" Height="160" />
                         </StackPanel>
                     </Border>
-                    <Expander Header="Scene Diff" IsExpanded="False">
+                        <Expander Header="🔍 Scene Diff" IsExpanded="False">
                         <ListBox ItemsSource="{Binding SceneDiffLines}" Height="100" />
                     </Expander>
                 </StackPanel>
             </Border>
 
             <TabControl Grid.Row="1">
-                <TabItem Header="Inventory">
+                <TabItem Header="🎒 Inventory">
                     <StackPanel Margin="8" Spacing="8">
-                        <TextBlock Text="Wallet" FontWeight="Bold" />
+                        <TextBlock Text="💼 Wallet" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding WalletLines}" Height="60" />
 
-                        <TextBlock Text="Inventory" FontWeight="Bold" />
+                        <TextBlock Text="📦 Inventory" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding InventoryLines}" Height="140" />
 
-                        <TextBlock Text="Equipment" FontWeight="Bold" />
+                        <TextBlock Text="🛡 Equipment" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding EquipmentLines}" Height="120" />
                     </StackPanel>
                 </TabItem>
-                <TabItem Header="Progression">
+                <TabItem Header="🏁 Progression">
                     <StackPanel Margin="8" Spacing="8">
-                        <TextBlock Text="Quests" FontWeight="Bold" />
+                        <TextBlock Text="🗒 Quests" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding QuestLines}" Height="80" />
 
-                        <TextBlock Text="Achievements" FontWeight="Bold" />
+                        <TextBlock Text="🏆 Achievements" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding AchievementLines}" Height="80" />
 
-                        <TextBlock Text="Collections" FontWeight="Bold" />
+                        <TextBlock Text="📚 Collections" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding CollectionLines}" Height="80" />
                     </StackPanel>
                 </TabItem>
-                <TabItem Header="Systems">
+                <TabItem Header="⚙ Systems">
                     <StackPanel Margin="8" Spacing="8">
-                        <TextBlock Text="Combat Log" FontWeight="Bold" />
+                        <TextBlock Text="⚔ Combat Log" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding CombatLines}" Height="120" />
 
-                        <TextBlock Text="Crafting" FontWeight="Bold" />
+                        <TextBlock Text="🧰 Crafting" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding CraftingLines}" Height="80" />
 
-                        <TextBlock Text="Trade" FontWeight="Bold" />
+                        <TextBlock Text="🪙 Trade" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding TradeLines}" Height="80" />
                     </StackPanel>
                 </TabItem>
-                <TabItem Header="Content">
+                <TabItem Header="🧪 Content">
                     <StackPanel Margin="8" Spacing="8">
-                        <TextBlock Text="Layered Generator" FontWeight="Bold" />
+                        <TextBlock Text="🎲 Layered Generator" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding GeneratorLines}" Height="80" />
 
-                        <TextBlock Text="Compendium" FontWeight="Bold" />
+                        <TextBlock Text="📖 Compendium" FontWeight="Bold" />
                         <ListBox ItemsSource="{Binding CompendiumLines}" Height="120" />
                     </StackPanel>
                 </TabItem>
