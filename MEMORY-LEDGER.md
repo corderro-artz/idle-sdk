@@ -21,3 +21,4 @@
 - 2026-01-24: Implemented achievements and collections core systems with tests.
 - 2026-01-24: Implemented audio system core with registry and mixer.
 - 2026-01-24: Implemented quest system core with evented progress updates and tests.
+- 2026-01-24: Implemented hotkey manager and theme system core with tests.
