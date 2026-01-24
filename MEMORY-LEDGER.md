@@ -24,3 +24,4 @@
 - 2026-01-24: Implemented hotkey manager and theme system core with tests.
 - 2026-01-24: Implemented developer sandbox core with runtime inspector and tests.
 - 2026-01-24: Implemented account/profile system core with tests.
+- 2026-01-24: Implemented offline progression reconciler with tests.
