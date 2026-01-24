@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="clr-namespace:IdleSdk.Demo.ViewModels"
+    mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+    x:Class="IdleSdk.Demo.MainWindow"
+    x:DataType="vm:DemoViewModel"
+    Title="idle-sdk Demo">
+    <Grid RowDefinitions="Auto,*" ColumnDefinitions="250,*,320" Margin="12" RowSpacing="12" ColumnSpacing="12">
+        <Border Grid.Row="0" Grid.ColumnSpan="3" Padding="8" Background="#20252b" CornerRadius="6">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Content="Tick" Command="{Binding TickCommand}" />
+                <Button Content="Offline 10s" Command="{Binding OfflineCommand}" />
+                <Button Content="Toggle Sandbox" Command="{Binding ToggleSandboxCommand}" />
+                <Button Content="Add Gold" Command="{Binding SandboxAddGoldCommand}" />
+                <TextBlock Text="Sandbox:" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding SandboxStatus}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="8">
+            <TextBlock Text="World" FontWeight="Bold" />
+            <ListBox ItemsSource="{Binding WorldLines}" Height="160" />
+
+            <TextBlock Text="Skills" FontWeight="Bold" />
+            <ListBox ItemsSource="{Binding SkillLines}" Height="120" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Grid.Column="1" Background="#1b1f24" CornerRadius="6" Padding="12">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Game View (placeholder)" FontWeight="Bold" />
+                <Border Height="320" Background="#2a3037" CornerRadius="4" Padding="8">
+                    <StackPanel>
+                        <TextBlock Text="Scene Elements" FontWeight="Bold" />
+                        <ListBox ItemsSource="{Binding SceneLines}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Grid.Column="2">
+            <StackPanel Spacing="10">
+                <TextBlock Text="Wallet" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding WalletLines}" Height="60" />
+
+                <TextBlock Text="Inventory" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding InventoryLines}" Height="120" />
+
+                <TextBlock Text="Equipment" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding EquipmentLines}" Height="120" />
+
+                <TextBlock Text="Quests" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding QuestLines}" Height="80" />
+
+                <TextBlock Text="Achievements" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding AchievementLines}" Height="80" />
+
+                <TextBlock Text="Collections" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding CollectionLines}" Height="80" />
+
+                <TextBlock Text="Combat Log" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding CombatLines}" Height="120" />
+
+                <TextBlock Text="Scene Diff" FontWeight="Bold" />
+                <ListBox ItemsSource="{Binding SceneDiffLines}" Height="100" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>
