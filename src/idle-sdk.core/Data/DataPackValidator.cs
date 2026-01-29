@@ -44,9 +44,19 @@ public sealed class DataPackValidator
         {
             throw new ArgumentException("Data pack JSON must be provided.", nameof(dataPackJson));
         }
-
-        var errors = _schema.Validate(dataPackJson);
-        if (errors.Count == 0)
+        var errors = Array.Empty<NJsonSchema.Validation.ValidationError>();
+        try
+        {
+            errors = _schema.Validate(dataPackJson).ToArray();
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException || ex is Newtonsoft.Json.JsonReaderException)
+        {
+            return DataPackValidationResult.Failure(new[]
+            {
+                new ValidationError(string.Empty, ex.Message)
+            });
+        }
+        if (errors.Length == 0)
         {
             return DataPackValidationResult.Success();
         }

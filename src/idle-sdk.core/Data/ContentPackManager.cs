@@ -11,6 +11,7 @@ public sealed class ContentPackManager
     private readonly EventHub? _events;
     private readonly Dictionary<string, DateTimeOffset> _reloadGate = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly HashSet<string> _watchedRoots = new(StringComparer.OrdinalIgnoreCase);
 
     public ContentPackManager(
         ContentPackRegistry registry,
@@ -42,17 +43,33 @@ public sealed class ContentPackManager
             return ContentPackLoadResult.Failure(new[] { new ValidationError("pack.json", "Missing pack.json manifest.") });
         }
 
-        var manifestJson = File.ReadAllText(manifestPath);
+        string manifestJson;
+        try
+        {
+            manifestJson = File.ReadAllText(manifestPath);
+        }
+        catch (Exception ex)
+        {
+            return ContentPackLoadResult.Failure(new[] { new ValidationError("pack.json", ex.Message) });
+        }
         var manifestValidation = _manifestValidator.ValidateJson(manifestJson);
         if (!manifestValidation.IsValid)
         {
             return ContentPackLoadResult.Failure(manifestValidation.Errors);
         }
 
-        var manifest = JsonSerializer.Deserialize<ContentPackManifest>(manifestJson, new JsonSerializerOptions
+        ContentPackManifest? manifest;
+        try
         {
-            PropertyNameCaseInsensitive = true
-        });
+            manifest = JsonSerializer.Deserialize<ContentPackManifest>(manifestJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch (JsonException ex)
+        {
+            return ContentPackLoadResult.Failure(new[] { new ValidationError("pack.json", ex.Message) });
+        }
 
         if (manifest is null)
         {
@@ -77,7 +94,16 @@ public sealed class ContentPackManager
             foreach (var file in Directory.GetFiles(dataDirectory, "*.json", SearchOption.TopDirectoryOnly))
             {
                 var key = Path.GetFileNameWithoutExtension(file);
-                var json = File.ReadAllText(file);
+                string json;
+                try
+                {
+                    json = File.ReadAllText(file);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add(new ValidationError($"data/{key}.json", ex.Message));
+                    continue;
+                }
                 if (_dataValidators.TryGetValue(key, out var validator))
                 {
                     var validation = validator.ValidateJson(json);
@@ -156,6 +182,11 @@ public sealed class ContentPackManager
             throw new DirectoryNotFoundException(rootDirectory);
         }
 
+        if (!_watchedRoots.Add(rootDirectory))
+        {
+            return;
+        }
+
         var watcher = new FileSystemWatcher(rootDirectory)
         {
             IncludeSubdirectories = true,
@@ -163,10 +194,10 @@ public sealed class ContentPackManager
             EnableRaisingEvents = true
         };
 
-        watcher.Changed += (_, args) => TryReload(args.FullPath, rootDirectory);
-        watcher.Created += (_, args) => TryReload(args.FullPath, rootDirectory);
-        watcher.Deleted += (_, args) => TryReload(args.FullPath, rootDirectory);
-        watcher.Renamed += (_, args) => TryReload(args.FullPath, rootDirectory);
+        watcher.Changed += (_, args) => TryReloadSafely(args.FullPath, rootDirectory);
+        watcher.Created += (_, args) => TryReloadSafely(args.FullPath, rootDirectory);
+        watcher.Deleted += (_, args) => TryReloadSafely(args.FullPath, rootDirectory);
+        watcher.Renamed += (_, args) => TryReloadSafely(args.FullPath, rootDirectory);
 
         _watchers.Add(watcher);
     }
@@ -180,6 +211,7 @@ public sealed class ContentPackManager
         }
 
         _watchers.Clear();
+        _watchedRoots.Clear();
     }
 
     private void TryReload(string changedPath, string rootDirectory)
@@ -227,6 +259,21 @@ public sealed class ContentPackManager
         if (TryReplace(packId, result.Pack))
         {
             _events?.Publish(new ContentPackHotReloaded(packId));
+            return;
+        }
+
+        _events?.Publish(new ContentPackHotReloadFailed(packDirectory));
+    }
+
+    private void TryReloadSafely(string changedPath, string rootDirectory)
+    {
+        try
+        {
+            TryReload(changedPath, rootDirectory);
+        }
+        catch
+        {
+            _events?.Publish(new ContentPackHotReloadFailed(rootDirectory));
         }
     }
 

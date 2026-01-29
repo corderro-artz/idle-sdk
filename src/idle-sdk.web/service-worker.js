@@ -1,12 +1,11 @@
-const CACHE_NAME = "idle-sdk-web-demo-v46";
+const CACHE_NAME = "idle-sdk-web-demo-v53";
 const ASSETS = [
     "./",
     "./index.html",
-    "./styles.css?v=46",
-    "./app.js?v=46",
+    "./styles.css?v=53",
+    "./app.js?v=53",
     "./manifest.webmanifest",
     "./icon.svg",
-    "./assets/icons/afk.png",
     "./assets/icons/slots_dark.png",
     "./assets/icons/scratcher_dark.png",
     "./assets/icons/keno_dark.png",

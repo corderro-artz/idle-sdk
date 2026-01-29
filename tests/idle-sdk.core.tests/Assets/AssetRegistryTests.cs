@@ -44,4 +44,47 @@ public class AssetRegistryTests
         Assert.Equal(16, frame.Width);
         Assert.Equal(16, frame.Height);
     }
+
+    [Fact]
+    public void Registry_Rejects_Duplicates_And_Missing()
+    {
+        var registry = new AssetRegistry();
+        var image = new ImageAssetDefinition("icon-idle", "icons/idling.png", ImageAssetType.Png);
+
+        registry.RegisterImage(image);
+
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterImage(image));
+        Assert.Throws<KeyNotFoundException>(() => registry.GetImage("missing"));
+
+        var sheet = new SpriteSheetDefinition("sheet", "atlas", 16, 16, 1, 1);
+        registry.RegisterSpriteSheet(sheet);
+
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterSpriteSheet(sheet));
+        Assert.Throws<KeyNotFoundException>(() => registry.GetSpriteSheet("missing"));
+    }
+
+    [Fact]
+    public void SpriteSheet_Validates_Frames_And_Index()
+    {
+        var frames = new List<SpriteFrameDefinition>
+        {
+            new("hero", 0, 0, 16, 16)
+        };
+        var sheet = new SpriteSheetDefinition("sheet", "atlas", 16, 16, 1, 1, frames);
+
+        Assert.Equal("hero", sheet.GetFrame(0).Id);
+        Assert.Throws<KeyNotFoundException>(() => sheet.GetFrame("missing"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sheet.GetFrame(2));
+    }
+
+    [Fact]
+    public void SpriteSheet_Rejects_Invalid_Definition()
+    {
+        Assert.Throws<ArgumentException>(() => new SpriteSheetDefinition("", "atlas", 16, 16, 1, 1));
+        Assert.Throws<ArgumentException>(() => new SpriteSheetDefinition("sheet", " ", 16, 16, 1, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SpriteSheetDefinition("sheet", "atlas", 0, 16, 1, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SpriteSheetDefinition("sheet", "atlas", 16, 0, 1, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SpriteSheetDefinition("sheet", "atlas", 16, 16, 0, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SpriteSheetDefinition("sheet", "atlas", 16, 16, 1, 0));
+    }
 }

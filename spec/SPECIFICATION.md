@@ -81,6 +81,8 @@
 - Contracts: Shared data contracts serialized as JSON.
 - Runtime loop:
    - `tick(delta)` → `engine.step(delta)` → state diff → render
+- Debug tooling:
+   - Provide optional Three.js-based 3D model previews for tooling/debug panels.
 
 ## Data & Storage
 - Content pack format:
@@ -141,6 +143,8 @@
    - Inventory + Equipment + Economy (currency wallet, items, gear slots).
    - Quests + Achievements + Collections (progress updates visible in UI).
 - Data: In-memory demo data packs (no external content required).
+- Web demo tooling:
+   - Provide a debug-panel 3D viewport using Three.js to preview GLB models for validation.
 
 ## Rollout & Migration
 - Migration steps:

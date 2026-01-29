@@ -24,4 +24,15 @@ public class AudioServiceTests
 
         Assert.Equal(1f, mixer.MasterVolume);
     }
+
+    [Fact]
+    public void AudioMixer_Clamps_All_Channels()
+    {
+        var mixer = new AudioMixerState();
+        mixer.SetMusic(-1f);
+        mixer.SetEffects(2f);
+
+        Assert.Equal(0f, mixer.MusicVolume);
+        Assert.Equal(1f, mixer.EffectsVolume);
+    }
 }

@@ -23,4 +23,16 @@ public class WorldRegistryTests
         Assert.Equal("Prime", stored.Name);
         Assert.Single(stored.Worlds);
     }
+
+    [Fact]
+    public void Registry_Rejects_Duplicate_And_Missing()
+    {
+        var registry = new WorldRegistry();
+        var universe = new UniverseDefinition("u1", "Prime");
+
+        registry.RegisterUniverse(universe);
+
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterUniverse(universe));
+        Assert.Throws<KeyNotFoundException>(() => registry.GetUniverse("missing"));
+    }
 }

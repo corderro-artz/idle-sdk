@@ -28,4 +28,14 @@ public class SnapshotServiceTests
             File.Delete(tempPath);
         }
     }
+
+    [Fact]
+    public void Constructor_Rejects_Null_Dependencies()
+    {
+        var serializer = new JsonStateSerializer<DemoState>();
+        var store = new SqliteSnapshotStore("Data Source=:memory:");
+
+        Assert.Throws<ArgumentNullException>(() => new SnapshotService<DemoState>(null!, serializer));
+        Assert.Throws<ArgumentNullException>(() => new SnapshotService<DemoState>(store, null!));
+    }
 }

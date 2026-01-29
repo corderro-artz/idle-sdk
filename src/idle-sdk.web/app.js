@@ -32,6 +32,20 @@ const state = {
     isLocked: false,
     sandboxEnabled: true,
     zoom: 1,
+    skillXpMultiplier: 1,
+    rewardMultiplier: 1,
+    cashMultiplier: 1,
+    clickXpBonus: 0,
+    clickXpBonusPerClick: 0.0001,
+    clickXpBonusMax: 0.25,
+    clickXpBonusDecayPerSecond: 0.06,
+    clickEnergyPerClick: 0.04,
+    clickEnergyDecayPerSecond: 4.2,
+    clickEnergyMax: 1.4,
+    clickEnergyLevelUpBoost: 0.6,
+    clickEnergyLevelUpPerLevel: 0.2,
+    ringParticlesEnabled: true,
+    lastActiveSkillId: null,
     wallet: { cash: 125, credit: 40 },
     inventorySlots: [],
     inventoryHistory: {},
@@ -44,7 +58,7 @@ const state = {
             level: 1,
             xp: 0,
             maxLevel: 60,
-            active: true,
+            active: false,
             task: "scratchers",
             tasks: [
                 {
@@ -64,24 +78,6 @@ const state = {
                     iconImage: "assets/icons/keno_dark.png"
                 }
             ]
-        },
-        {
-            id: "idling",
-            name: "Idling",
-            icon: "✨",
-            iconImage: "assets/icons/afk.png",
-            level: 1,
-            xp: 0,
-            maxLevel: 60,
-            active: false,
-            task: "idle",
-            tasks: [
-                { id: "idle", label: "Idle", level: 1, reward: "Rest and recover" },
-                { id: "flip", label: "Flip a coin", level: 5, reward: "Clear your mind" },
-                { id: "daydream", label: "Daydream", level: 10, reward: "Wander thoughts" },
-                { id: "nap", label: "Power nap", level: 15, reward: "Recharge" },
-                { id: "lucid", label: "Lucid drift", level: 20, reward: "Deep focus" }
-            ]
         }
     ],
     world: ["Universe: Meadow", "World: Bristlewood", "Region: North Reach", "Zone: Clearing", "Node: Camp"],
@@ -94,7 +90,8 @@ const state = {
     trade: ["3 Green Chips -> 2 Cash"],
     generator: ["Biome: Casino", "Weather: Neon"],
     compendium: ["Green Chips", "Blue Chips"],
-    saveStatus: "Ready"
+    saveStatus: "Ready",
+    contentPacks: []
 };
 
 const ui = {
@@ -142,12 +139,40 @@ const ui = {
     walletInspector: document.getElementById("walletInspector"),
     inventoryInspector: document.getElementById("inventoryInspector"),
     skillInspector: document.getElementById("skillInspector"),
+    contentPackInspector: document.getElementById("contentPackInspector"),
+    moduleInspector: document.getElementById("moduleInspector"),
+    externalModuleInput: document.getElementById("externalModuleInput"),
+    loadModulesBtn: document.getElementById("loadModulesBtn"),
+    clearModulesBtn: document.getElementById("clearModulesBtn"),
+    debugOverlayPanel: document.querySelector(".overlay-panel"),
+    debugSizeToggle: document.getElementById("toggleDebugSize"),
+    themeDialog: document.getElementById("themeDialog"),
+    themeList: document.getElementById("themeList"),
+    themeJson: document.getElementById("themeJson"),
+    applyThemeJson: document.getElementById("applyThemeJson"),
+    reloadThemesBtn: document.getElementById("reloadThemesBtn"),
+    openThemeBtn: document.getElementById("openTheme"),
+    closeThemeBtn: document.getElementById("closeTheme"),
+    openErrorsBtn: document.getElementById("openErrors"),
+    errorDialog: document.getElementById("errorDialog"),
+    errorList: document.getElementById("errorList"),
+    errorDetails: document.getElementById("errorDetails"),
+    copyErrorsBtn: document.getElementById("copyErrors"),
+    clearErrorsBtn: document.getElementById("clearErrors"),
+    closeErrorsBtn: document.getElementById("closeErrors"),
+    modelUploadInput: document.getElementById("modelUploadInput"),
+    modelClearBtn: document.getElementById("modelClearBtn"),
+    modelUploadName: document.getElementById("modelUploadName"),
     zoomSlider: document.getElementById("zoomSlider"),
-    zoomValue: document.getElementById("zoomValue")
+    zoomValue: document.getElementById("zoomValue"),
+    comboMeter: document.getElementById("comboMeter"),
+    comboValue: document.getElementById("comboValue"),
+    comboFill: document.getElementById("comboFill")
 };
 
-let selectedSkillId = "idling";
+let selectedSkillId = "gambling";
 let pendingTaskBounceId = null;
+let lastTaskListKey = "";
 let running = true;
 let lastTick = performance.now();
 let fpsFrames = 0;
@@ -163,8 +188,444 @@ let pendingIconBurstSkillId = null;
 let iconComboLevel = 0;
 let iconComboExpireAt = 0;
 let iconBurstTimeoutId = null;
+let tickIntervalId = null;
+let iconEnergy = 0;
+let iconEnergyVelocity = 0;
+let modelRenderer = null;
+const errorLog = [];
+let threeLoaderPromise = null;
+let threeModule = null;
+let gltfLoaderCtor = null;
+let objLoaderCtor = null;
+let modelUploadUrl = null;
+
+const moduleState = {
+    simulation: { enabled: true },
+    skills: { enabled: true },
+    inventory: { enabled: true },
+    economy: { enabled: true },
+    renderer: { enabled: true },
+    renderer3d: { enabled: true }
+};
+
+const moduleDefinitions = [
+    {
+        id: "simulation",
+        name: "Simulation",
+        version: "1.0.0",
+        description: "Controls tick timing and lock state.",
+        properties: [
+            {
+                id: "tickRate",
+                label: "Tick Rate",
+                type: "number",
+                min: 0.5,
+                max: 5,
+                step: 0.5,
+                get: () => state.tickRate,
+                set: (value) => applyTickRate(value)
+            },
+            {
+                id: "locked",
+                label: "Locked",
+                type: "boolean",
+                get: () => state.isLocked,
+                set: (value) => {
+                    state.isLocked = value;
+                    refreshToggleButtons();
+                }
+            }
+        ]
+    },
+    {
+        id: "skills",
+        name: "Skill System",
+        version: "1.0.0",
+        description: "XP gain, unlocks, and skill context.",
+        properties: [
+            {
+                id: "xpMultiplier",
+                label: "XP Multiplier",
+                type: "number",
+                min: 0,
+                max: 5,
+                step: 0.1,
+                get: () => state.skillXpMultiplier,
+                set: (value) => {
+                    state.skillXpMultiplier = clamp(value, 0, 5);
+                }
+            }
+        ]
+    },
+    {
+        id: "active-skilling",
+        name: "Active Skilling",
+        version: "1.0.0",
+        description: "Click-based XP bonus and icon energy feedback.",
+        properties: [
+            {
+                id: "clickBonus",
+                label: "Current Click Bonus",
+                type: "number",
+                min: 0,
+                max: 0.5,
+                step: 0.001,
+                get: () => state.clickXpBonus,
+                set: (value) => {
+                    state.clickXpBonus = clamp(value, 0, state.clickXpBonusMax);
+                }
+            },
+            {
+                id: "clickBonusPerClick",
+                label: "Bonus per Click",
+                type: "number",
+                min: 0,
+                max: 0.05,
+                step: 0.0001,
+                get: () => state.clickXpBonusPerClick,
+                set: (value) => {
+                    state.clickXpBonusPerClick = clamp(value, 0, 0.05);
+                }
+            },
+            {
+                id: "clickBonusMax",
+                label: "Bonus Cap",
+                type: "number",
+                min: 0,
+                max: 1,
+                step: 0.01,
+                get: () => state.clickXpBonusMax,
+                set: (value) => {
+                    state.clickXpBonusMax = clamp(value, 0, 1);
+                }
+            },
+            {
+                id: "clickBonusDecay",
+                label: "Bonus Decay/sec",
+                type: "number",
+                min: 0,
+                max: 1,
+                step: 0.01,
+                get: () => state.clickXpBonusDecayPerSecond,
+                set: (value) => {
+                    state.clickXpBonusDecayPerSecond = clamp(value, 0, 1);
+                }
+            },
+            {
+                id: "energyPerClick",
+                label: "Energy per Click",
+                type: "number",
+                min: 0,
+                max: 1,
+                step: 0.01,
+                get: () => state.clickEnergyPerClick,
+                set: (value) => {
+                    state.clickEnergyPerClick = clamp(value, 0, 1);
+                }
+            },
+            {
+                id: "energyDecay",
+                label: "Energy Decay/sec",
+                type: "number",
+                min: 0,
+                max: 10,
+                step: 0.1,
+                get: () => state.clickEnergyDecayPerSecond,
+                set: (value) => {
+                    state.clickEnergyDecayPerSecond = clamp(value, 0, 10);
+                }
+            },
+            {
+                id: "energyMax",
+                label: "Energy Max",
+                type: "number",
+                min: 0.5,
+                max: 4,
+                step: 0.1,
+                get: () => state.clickEnergyMax,
+                set: (value) => {
+                    state.clickEnergyMax = clamp(value, 0.5, 4);
+                }
+            },
+            {
+                id: "energyLevelUp",
+                label: "Energy per Level Up",
+                type: "number",
+                min: 0,
+                max: 2,
+                step: 0.05,
+                get: () => state.clickEnergyLevelUpBoost,
+                set: (value) => {
+                    state.clickEnergyLevelUpBoost = clamp(value, 0, 2);
+                }
+            },
+            {
+                id: "energyLevelUpPer",
+                label: "Energy per Level Gained",
+                type: "number",
+                min: 0,
+                max: 1,
+                step: 0.05,
+                get: () => state.clickEnergyLevelUpPerLevel,
+                set: (value) => {
+                    state.clickEnergyLevelUpPerLevel = clamp(value, 0, 1);
+                }
+            }
+        ]
+    },
+    {
+        id: "inventory",
+        name: "Inventory System",
+        version: "1.0.0",
+        description: "Reward drops and stack handling.",
+        properties: [
+            {
+                id: "rewardMultiplier",
+                label: "Reward Multiplier",
+                type: "number",
+                min: 0,
+                max: 5,
+                step: 0.1,
+                get: () => state.rewardMultiplier,
+                set: (value) => {
+                    state.rewardMultiplier = clamp(value, 0, 5);
+                }
+            }
+        ]
+    },
+    {
+        id: "economy",
+        name: "Economy System",
+        version: "1.0.0",
+        description: "Wallet updates and currency gains.",
+        properties: [
+            {
+                id: "cashMultiplier",
+                label: "Cash Gain Multiplier",
+                type: "number",
+                min: 0,
+                max: 5,
+                step: 0.1,
+                get: () => state.cashMultiplier,
+                set: (value) => {
+                    state.cashMultiplier = clamp(value, 0, 5);
+                }
+            }
+        ]
+    },
+    {
+        id: "renderer",
+        name: "Renderer",
+        version: "1.0.0",
+        description: "Visual effects and camera settings.",
+        properties: [
+            {
+                id: "zoom",
+                label: "Zoom",
+                type: "number",
+                min: 0.75,
+                max: 1.5,
+                step: 0.01,
+                get: () => state.zoom,
+                set: (value) => applyZoom(value)
+            },
+            {
+                id: "ringParticles",
+                label: "Ring Particles",
+                type: "boolean",
+                get: () => state.ringParticlesEnabled,
+                set: (value) => {
+                    state.ringParticlesEnabled = Boolean(value);
+                }
+            }
+        ]
+    },
+    {
+        id: "renderer3d",
+        name: "Renderer (3D)",
+        version: "1.0.0",
+        description: "Three.js model previews and debug viewport.",
+        properties: []
+    }
+];
+
+const externalModules = [];
+
+const builtinThemes = [
+    {
+        id: "midnight",
+        name: "Midnight",
+        source: "built-in",
+        mode: "dark",
+        colors: {
+            "--bg": "#0b0f14",
+            "--panel": "#111823",
+            "--card": "#151d2a",
+            "--card-border": "#273244",
+            "--text": "#e2e8f0",
+            "--muted": "#93a4b8",
+            "--accent": "#60a5fa",
+            "--accent-strong": "#3b82f6",
+            "--ring-track": "rgba(17, 24, 35, 0.55)",
+            "--glow-1": "#f6c8ff",
+            "--glow-2": "#b7f7ff",
+            "--glow-3": "#b7ffd8",
+            "--glow-4": "#ffe6a7",
+            "--ring-glow": "rgba(183, 247, 255, 0.18)",
+            "--ring-progress-glow": "rgba(183, 247, 255, 0.45)",
+            "--ring-tip-core": "rgba(255, 255, 255, 0.95)",
+            "--ring-tip-mid": "rgba(183, 247, 255, 0.65)",
+            "--ring-tip-outer": "rgba(246, 200, 255, 0)",
+            "--ring-tip-shadow": "rgba(182, 247, 255, 0.35)"
+        }
+    },
+    {
+        id: "obsidian",
+        name: "Obsidian",
+        source: "built-in",
+        mode: "dark",
+        colors: {
+            "--bg": "#0a0b10",
+            "--panel": "#0f1420",
+            "--card": "#141a28",
+            "--card-border": "#263145",
+            "--text": "#e5e7eb",
+            "--muted": "#8c98ad",
+            "--accent": "#22d3ee",
+            "--accent-strong": "#06b6d4",
+            "--ring-track": "rgba(24, 30, 45, 0.6)",
+            "--glow-1": "#67e8f9",
+            "--glow-2": "#a5f3fc",
+            "--glow-3": "#bae6fd",
+            "--glow-4": "#fde68a",
+            "--ring-glow": "rgba(34, 211, 238, 0.2)",
+            "--ring-progress-glow": "rgba(34, 211, 238, 0.5)",
+            "--ring-tip-core": "rgba(255, 255, 255, 0.95)",
+            "--ring-tip-mid": "rgba(34, 211, 238, 0.6)",
+            "--ring-tip-outer": "rgba(34, 211, 238, 0)",
+            "--ring-tip-shadow": "rgba(34, 211, 238, 0.35)"
+        }
+    },
+    {
+        id: "ember",
+        name: "Ember",
+        source: "built-in",
+        mode: "dark",
+        colors: {
+            "--bg": "#120b0b",
+            "--panel": "#1a1212",
+            "--card": "#221717",
+            "--card-border": "#3a2a2a",
+            "--text": "#f8e7dc",
+            "--muted": "#b6a39a",
+            "--accent": "#fb7185",
+            "--accent-strong": "#f43f5e",
+            "--ring-track": "rgba(58, 42, 42, 0.6)",
+            "--glow-1": "#fb7185",
+            "--glow-2": "#fda4af",
+            "--glow-3": "#fdba74",
+            "--glow-4": "#fde68a",
+            "--ring-glow": "rgba(251, 113, 133, 0.2)",
+            "--ring-progress-glow": "rgba(251, 113, 133, 0.5)",
+            "--ring-tip-core": "rgba(255, 255, 255, 0.95)",
+            "--ring-tip-mid": "rgba(251, 113, 133, 0.6)",
+            "--ring-tip-outer": "rgba(251, 113, 133, 0)",
+            "--ring-tip-shadow": "rgba(251, 113, 133, 0.35)"
+        }
+    },
+    {
+        id: "daylight",
+        name: "Daylight",
+        source: "built-in",
+        mode: "light",
+        colors: {
+            "--bg": "#edf2f7",
+            "--panel": "#f8fafc",
+            "--card": "#ffffff",
+            "--card-border": "#d7e0ec",
+            "--text": "#0f172a",
+            "--muted": "#475569",
+            "--accent": "#2563eb",
+            "--accent-strong": "#1d4ed8",
+            "--ring-track": "rgba(148, 163, 184, 0.6)",
+            "--glow-1": "#93c5fd",
+            "--glow-2": "#38bdf8",
+            "--glow-3": "#86efac",
+            "--glow-4": "#fde68a",
+            "--ring-glow": "rgba(59, 130, 246, 0.18)",
+            "--ring-progress-glow": "rgba(37, 99, 235, 0.45)",
+            "--ring-tip-core": "rgba(255, 255, 255, 0.95)",
+            "--ring-tip-mid": "rgba(59, 130, 246, 0.55)",
+            "--ring-tip-outer": "rgba(37, 99, 235, 0)",
+            "--ring-tip-shadow": "rgba(37, 99, 235, 0.35)"
+        }
+    },
+    {
+        id: "linen",
+        name: "Linen",
+        source: "built-in",
+        mode: "light",
+        colors: {
+            "--bg": "#f7f1ea",
+            "--panel": "#fff9f2",
+            "--card": "#ffffff",
+            "--card-border": "#e2d6c9",
+            "--text": "#2b2a28",
+            "--muted": "#6b6258",
+            "--accent": "#f97316",
+            "--accent-strong": "#ea580c",
+            "--ring-track": "rgba(148, 136, 122, 0.5)",
+            "--glow-1": "#fdba74",
+            "--glow-2": "#fcd34d",
+            "--glow-3": "#a7f3d0",
+            "--glow-4": "#93c5fd",
+            "--ring-glow": "rgba(249, 115, 22, 0.18)",
+            "--ring-progress-glow": "rgba(249, 115, 22, 0.45)",
+            "--ring-tip-core": "rgba(255, 255, 255, 0.95)",
+            "--ring-tip-mid": "rgba(249, 115, 22, 0.45)",
+            "--ring-tip-outer": "rgba(249, 115, 22, 0)",
+            "--ring-tip-shadow": "rgba(249, 115, 22, 0.35)"
+        }
+    },
+    {
+        id: "frost",
+        name: "Frost",
+        source: "built-in",
+        mode: "light",
+        colors: {
+            "--bg": "#eef5ff",
+            "--panel": "#f6faff",
+            "--card": "#ffffff",
+            "--card-border": "#d5e3f6",
+            "--text": "#0f172a",
+            "--muted": "#475569",
+            "--accent": "#0ea5e9",
+            "--accent-strong": "#0284c7",
+            "--ring-track": "rgba(148, 163, 184, 0.5)",
+            "--glow-1": "#a5f3fc",
+            "--glow-2": "#60a5fa",
+            "--glow-3": "#93c5fd",
+            "--glow-4": "#fde68a",
+            "--ring-glow": "rgba(14, 165, 233, 0.18)",
+            "--ring-progress-glow": "rgba(14, 165, 233, 0.45)",
+            "--ring-tip-core": "rgba(255, 255, 255, 0.95)",
+            "--ring-tip-mid": "rgba(14, 165, 233, 0.5)",
+            "--ring-tip-outer": "rgba(14, 165, 233, 0)",
+            "--ring-tip-shadow": "rgba(14, 165, 233, 0.35)"
+        }
+    }
+];
+
+const themePacks = [];
+
+const DEV_MODE = location.hostname === "localhost"
+    || location.hostname === "127.0.0.1"
+    || new URLSearchParams(location.search).has("dev")
+    || localStorage.getItem("idle-sdk-dev") === "1";
 
 const STORAGE_KEY = "idle-sdk-web-demo-state";
+const MODULE_STORAGE_KEY = "idle-sdk-web-demo-modules";
+const THEME_STORAGE_KEY = "idle-sdk-web-demo-theme";
 const RING_RADIUS = 38;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
@@ -175,6 +636,461 @@ const contextCard = document.querySelector(".skill-context");
 
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+}
+
+function isModuleEnabled(moduleId) {
+    return moduleState[moduleId]?.enabled !== false;
+}
+
+function persistModuleState() {
+    const snapshot = {
+        modules: moduleState,
+        values: {
+            tickRate: state.tickRate,
+            skillXpMultiplier: state.skillXpMultiplier,
+            rewardMultiplier: state.rewardMultiplier,
+            cashMultiplier: state.cashMultiplier,
+            clickXpBonus: state.clickXpBonus,
+            clickXpBonusPerClick: state.clickXpBonusPerClick,
+            clickXpBonusMax: state.clickXpBonusMax,
+            clickXpBonusDecayPerSecond: state.clickXpBonusDecayPerSecond,
+            clickEnergyPerClick: state.clickEnergyPerClick,
+            clickEnergyDecayPerSecond: state.clickEnergyDecayPerSecond,
+            clickEnergyMax: state.clickEnergyMax,
+            clickEnergyLevelUpBoost: state.clickEnergyLevelUpBoost,
+            clickEnergyLevelUpPerLevel: state.clickEnergyLevelUpPerLevel,
+            ringParticlesEnabled: state.ringParticlesEnabled,
+            zoom: state.zoom
+        },
+        externalModules
+    };
+    localStorage.setItem(MODULE_STORAGE_KEY, JSON.stringify(snapshot));
+}
+
+function applyDevModeUI() {
+    document.querySelectorAll(".dev-only").forEach((el) => {
+        el.classList.toggle("hidden", !DEV_MODE);
+    });
+}
+
+function formatErrorPayload(payload) {
+    if (payload == null) return "";
+    if (payload instanceof Error) return payload.stack || payload.message || String(payload);
+    if (payload instanceof ErrorEvent) {
+        return JSON.stringify({
+            message: payload.message,
+            filename: payload.filename,
+            lineno: payload.lineno,
+            colno: payload.colno
+        }, null, 2);
+    }
+    if (payload?.type === "error" && payload?.target?.src) {
+        return JSON.stringify({
+            message: "Script load failed",
+            src: payload.target.src
+        }, null, 2);
+    }
+    if (typeof payload === "string") return payload;
+    try {
+        return JSON.stringify(payload, null, 2);
+    } catch {
+        return String(payload);
+    }
+}
+
+function updateErrorButton() {
+    if (!ui.openErrorsBtn) return;
+    const count = errorLog.length;
+    ui.openErrorsBtn.classList.toggle("hidden", count === 0);
+    ui.openErrorsBtn.textContent = count > 0 ? `⚠ Errors (${count})` : "⚠ Errors";
+}
+
+function renderErrorList() {
+    if (!ui.errorList || !ui.errorDetails) return;
+    ui.errorList.innerHTML = "";
+    errorLog.slice().reverse().forEach((entry) => {
+        const row = document.createElement("div");
+        row.className = `error-row level-${entry.level}`;
+        const pill = document.createElement("span");
+        pill.className = "level-pill";
+        pill.textContent = entry.level.toUpperCase();
+        const message = document.createElement("span");
+        message.textContent = entry.message;
+        const time = document.createElement("span");
+        time.className = "error-time";
+        time.textContent = entry.time;
+        row.appendChild(pill);
+        row.appendChild(message);
+        row.appendChild(time);
+        row.addEventListener("click", () => {
+            ui.errorDetails.value = entry.details;
+        });
+        ui.errorList.appendChild(row);
+    });
+    if (errorLog.length > 0 && !ui.errorDetails.value) {
+        ui.errorDetails.value = errorLog[errorLog.length - 1].details;
+    }
+}
+
+function logIssue(level, message, detail) {
+    if (detail && detail.__logged) return;
+    if (detail && typeof detail === "object") {
+        detail.__logged = true;
+    }
+    const entry = {
+        level,
+        message: message || "Unknown issue",
+        details: formatErrorPayload(detail || message),
+        time: new Date().toLocaleTimeString()
+    };
+    errorLog.push(entry);
+    if (errorLog.length > 100) {
+        errorLog.shift();
+    }
+    updateErrorButton();
+    renderErrorList();
+    if (level === "error" && ui.errorDialog) {
+        ui.errorDialog.classList.remove("hidden");
+    }
+}
+
+function setupErrorLogging() {
+    const originalWarn = console.warn.bind(console);
+    const originalError = console.error.bind(console);
+    console.warn = (...args) => {
+        originalWarn(...args);
+        logIssue("warn", args.map(formatErrorPayload).join(" "), args.find((arg) => arg instanceof Error));
+    };
+    console.error = (...args) => {
+        originalError(...args);
+        logIssue("error", args.map(formatErrorPayload).join(" "), args.find((arg) => arg instanceof Error));
+    };
+    window.addEventListener("error", (event) => {
+        logIssue("error", event.message || "Window error", event.error || event);
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+        logIssue("error", "Unhandled promise rejection", event.reason || event);
+    });
+}
+
+function loadScriptOnce(src, id) {
+    return new Promise((resolve, reject) => {
+        if (id && document.getElementById(id)) {
+            resolve();
+            return;
+        }
+        const script = document.createElement("script");
+        if (id) {
+            script.id = id;
+        }
+        script.src = src;
+        script.crossOrigin = "anonymous";
+        script.onload = () => resolve();
+        script.onerror = (error) => {
+            const wrapped = new Error(`Failed to load script: ${src}`);
+            wrapped.original = error;
+            reject(wrapped);
+        };
+        document.head.appendChild(script);
+    });
+}
+
+async function tryLoadScripts(sources, idPrefix) {
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        try {
+            await loadScriptOnce(src, `${idPrefix}-${i}`);
+            return true;
+        } catch (error) {
+            logIssue("warn", `Failed to load ${idPrefix} from ${src}`, error);
+        }
+    }
+    return false;
+}
+
+function resolveModuleUrl(src) {
+    if (src.startsWith("./")) {
+        return new URL(src, import.meta.url).href;
+    }
+    return src;
+}
+
+async function tryImportModule(sources, label) {
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = resolveModuleUrl(sources[i]);
+        try {
+            const module = await import(src);
+            return module;
+        } catch (error) {
+            logIssue("warn", `Failed to import ${label} from ${src}`, error);
+        }
+    }
+    return null;
+}
+
+function ensureThreeJs() {
+    if (window.THREE && (window.GLTFLoader || window.THREE.GLTFLoader) && (window.OBJLoader || window.THREE.OBJLoader)) {
+        return Promise.resolve(true);
+    }
+    if (threeLoaderPromise) return threeLoaderPromise;
+    threeLoaderPromise = (async () => {
+        try {
+            const moduleSources = [
+                "./vendor/three/three.module.min.js",
+                "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+                "https://unpkg.com/three@0.161.0/build/three.module.js",
+                "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.min.js"
+            ];
+            if (!window.THREE) {
+                const module = await tryImportModule(moduleSources, "three-module");
+                if (module) {
+                    threeModule = module;
+                    window.THREE = module;
+                }
+            }
+            if (!window.THREE) {
+                const coreSources = [
+                    "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js",
+                    "https://unpkg.com/three@0.161.0/build/three.min.js",
+                    "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/three.min.js",
+                    "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r161/build/three.min.js",
+                    "vendor/three/three.min.js"
+                ];
+                await tryLoadScripts(coreSources, "three-core");
+            }
+            if (!window.GLTFLoader && !window.THREE?.GLTFLoader) {
+                const gltfModuleSources = [
+                    "./vendor/three/GLTFLoader.js",
+                    "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/loaders/GLTFLoader.js",
+                    "https://unpkg.com/three@0.161.0/examples/jsm/loaders/GLTFLoader.js"
+                ];
+                const gltfModule = await tryImportModule(gltfModuleSources, "gltf-loader");
+                if (gltfModule?.GLTFLoader) {
+                    gltfLoaderCtor = gltfModule.GLTFLoader;
+                    window.GLTFLoader = gltfModule.GLTFLoader;
+                }
+            }
+            if (!window.OBJLoader && !window.THREE?.OBJLoader) {
+                const objModuleSources = [
+                    "./vendor/three/OBJLoader.js",
+                    "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/loaders/OBJLoader.js",
+                    "https://unpkg.com/three@0.161.0/examples/jsm/loaders/OBJLoader.js"
+                ];
+                const objModule = await tryImportModule(objModuleSources, "obj-loader");
+                if (objModule?.OBJLoader) {
+                    objLoaderCtor = objModule.OBJLoader;
+                    window.OBJLoader = objModule.OBJLoader;
+                }
+            }
+            return Boolean(window.THREE);
+        } catch (error) {
+            logIssue("error", "Failed to load Three.js", error);
+            return false;
+        }
+    })();
+    return threeLoaderPromise;
+}
+
+function persistSnapshot(snapshot) {
+    if (DEV_MODE) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+        return true;
+    }
+
+    console.warn("Remote persistence not configured; skipping save.");
+    return false;
+}
+
+function loadSnapshotFromStorage() {
+    if (DEV_MODE) {
+        return localStorage.getItem(STORAGE_KEY);
+    }
+
+    console.warn("Remote persistence not configured; skipping load.");
+    return null;
+}
+
+function restoreModuleState() {
+    const raw = localStorage.getItem(MODULE_STORAGE_KEY);
+    if (!raw) return;
+    try {
+        const snapshot = JSON.parse(raw);
+        if (snapshot?.modules) {
+            Object.entries(snapshot.modules).forEach(([key, value]) => {
+                moduleState[key] = { enabled: value?.enabled !== false };
+            });
+        }
+        if (snapshot?.values) {
+            if (Number.isFinite(snapshot.values.tickRate)) {
+                state.tickRate = snapshot.values.tickRate;
+            }
+            if (Number.isFinite(snapshot.values.skillXpMultiplier)) {
+                state.skillXpMultiplier = snapshot.values.skillXpMultiplier;
+            }
+            if (Number.isFinite(snapshot.values.rewardMultiplier)) {
+                state.rewardMultiplier = snapshot.values.rewardMultiplier;
+            }
+            if (Number.isFinite(snapshot.values.cashMultiplier)) {
+                state.cashMultiplier = snapshot.values.cashMultiplier;
+            }
+            if (Number.isFinite(snapshot.values.clickXpBonus)) {
+                state.clickXpBonus = snapshot.values.clickXpBonus;
+            }
+            if (Number.isFinite(snapshot.values.clickXpBonusPerClick)) {
+                state.clickXpBonusPerClick = snapshot.values.clickXpBonusPerClick;
+            }
+            if (Number.isFinite(snapshot.values.clickXpBonusMax)) {
+                state.clickXpBonusMax = snapshot.values.clickXpBonusMax;
+            }
+            if (Number.isFinite(snapshot.values.clickXpBonusDecayPerSecond)) {
+                state.clickXpBonusDecayPerSecond = snapshot.values.clickXpBonusDecayPerSecond;
+            }
+            if (Number.isFinite(snapshot.values.clickEnergyPerClick)) {
+                state.clickEnergyPerClick = snapshot.values.clickEnergyPerClick;
+            }
+            if (Number.isFinite(snapshot.values.clickEnergyDecayPerSecond)) {
+                state.clickEnergyDecayPerSecond = snapshot.values.clickEnergyDecayPerSecond;
+            }
+            if (Number.isFinite(snapshot.values.clickEnergyMax)) {
+                state.clickEnergyMax = snapshot.values.clickEnergyMax;
+            }
+            if (Number.isFinite(snapshot.values.clickEnergyLevelUpBoost)) {
+                state.clickEnergyLevelUpBoost = snapshot.values.clickEnergyLevelUpBoost;
+            }
+            if (Number.isFinite(snapshot.values.clickEnergyLevelUpPerLevel)) {
+                state.clickEnergyLevelUpPerLevel = snapshot.values.clickEnergyLevelUpPerLevel;
+            }
+            if (typeof snapshot.values.ringParticlesEnabled === "boolean") {
+                state.ringParticlesEnabled = snapshot.values.ringParticlesEnabled;
+            }
+            if (Number.isFinite(snapshot.values.zoom)) {
+                state.zoom = snapshot.values.zoom;
+            }
+        }
+        if (Array.isArray(snapshot?.externalModules)) {
+            externalModules.length = 0;
+            snapshot.externalModules.forEach((module) => externalModules.push(module));
+        }
+    } catch (error) {
+        console.warn("Failed to restore module state", error);
+    }
+}
+
+function applyTickRate(value) {
+    state.tickRate = clamp(Number(value) || 1, 0.5, 5);
+    if (ui.debugTickRate) {
+        ui.debugTickRate.textContent = `Tick rate: ${state.tickRate}/s • Tick ${state.tick}`;
+    }
+    refreshTickLoop();
+    persistModuleState();
+}
+
+function applyZoom(value) {
+    state.zoom = clamp(Number(value) || 1, 0.75, 1.5);
+    const appRoot = document.getElementById("app");
+    if (appRoot) {
+        appRoot.style.transform = `scale(${state.zoom})`;
+        appRoot.style.transformOrigin = "top left";
+    }
+    if (ui.zoomSlider) {
+        ui.zoomSlider.value = String(state.zoom);
+    }
+    if (ui.zoomValue) {
+        ui.zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
+    }
+    persistModuleState();
+}
+
+const ThemeManager = {
+    themes: new Map(),
+    activeId: "dark",
+    register(theme) {
+        if (!theme?.id) return;
+        this.themes.set(theme.id, theme);
+    },
+    loadBuiltIns() {
+        this.themes.clear();
+        builtinThemes.forEach((theme) => this.register(theme));
+        themePacks.forEach((pack) => {
+            const packEnabled = state.contentPacks.find((entry) => entry.id === pack.packId)?.enabled !== false;
+            if (!packEnabled) return;
+            pack.themes.forEach((theme) => this.register(theme));
+        });
+    },
+    apply(themeId) {
+        const theme = this.themes.get(themeId);
+        if (!theme) return;
+        this.activeId = theme.id;
+        const root = document.documentElement;
+        root.style.colorScheme = theme.mode === "light" ? "light" : "dark";
+        Object.entries(theme.colors ?? {}).forEach(([key, value]) => {
+            root.style.setProperty(key, value);
+        });
+        localStorage.setItem(THEME_STORAGE_KEY, theme.id);
+        renderThemeList();
+    },
+    restore() {
+        const stored = localStorage.getItem(THEME_STORAGE_KEY);
+        this.activeId = stored ?? "dark";
+        if (!this.themes.has(this.activeId)) {
+            this.activeId = "dark";
+        }
+        this.apply(this.activeId);
+    },
+    updateFromJson(payload) {
+        if (!payload) return;
+        this.register(payload);
+        this.apply(payload.id);
+    }
+};
+
+function renderThemeList() {
+    if (!ui.themeList) return;
+    ui.themeList.innerHTML = "";
+    [...ThemeManager.themes.values()].forEach((theme) => {
+        const row = document.createElement("div");
+        row.className = "theme-row";
+        const swatch = document.createElement("span");
+        swatch.className = "theme-swatch";
+        const accent = theme.colors?.["--accent"] ?? "#60a5fa";
+        swatch.style.background = accent;
+        const label = document.createElement("span");
+        label.textContent = `${theme.name} (${theme.source})`;
+        const button = document.createElement("button");
+        button.className = "button ghost";
+        button.textContent = ThemeManager.activeId === theme.id ? "Active" : "Apply";
+        button.onclick = () => ThemeManager.apply(theme.id);
+        row.appendChild(swatch);
+        row.appendChild(label);
+        row.appendChild(button);
+        ui.themeList.appendChild(row);
+    });
+    if (ui.themeJson) {
+        const active = ThemeManager.themes.get(ThemeManager.activeId);
+        ui.themeJson.value = JSON.stringify(active, null, 2);
+    }
+}
+
+function ensureSelectedSkill() {
+    if (!state.skills.length) return;
+    if (!selectedSkillId || !state.skills.some((skill) => skill.id === selectedSkillId)) {
+        const active = state.skills.find((skill) => skill.active);
+        selectedSkillId = active?.id ?? state.lastActiveSkillId ?? state.skills[0].id;
+    }
+}
+
+function refreshTickLoop() {
+    if (tickIntervalId) {
+        clearInterval(tickIntervalId);
+        tickIntervalId = null;
+    }
+    if (isModuleEnabled("simulation")) {
+        tickIntervalId = setInterval(() => {
+            if (!state.isLocked) {
+                tickOnce();
+            }
+        }, 1000 / state.tickRate);
+    }
 }
 
 function randInt(min, max) {
@@ -395,7 +1311,9 @@ function renderWallet() {
 function renderInventory() {
     ui.inventoryList.innerHTML = "";
     ui.inventoryList.className = "list inventory-grid";
-    if (state.inventorySlots.length === 0) {
+    const totals = getInventoryTotals();
+    const entries = Object.entries(totals);
+    if (entries.length === 0) {
         const li = document.createElement("li");
         li.className = "inventory-empty";
         li.textContent = "No items yet. Start a task to collect rewards.";
@@ -403,8 +1321,9 @@ function renderInventory() {
         return;
     }
 
-    state.inventorySlots.forEach((slot) => {
-        const meta = getItemDef(slot.id);
+    entries.forEach(([itemId, quantity]) => {
+        const slot = { id: itemId, quantity };
+        const meta = getItemDef(itemId);
         const stackLimit = getStackLimit(meta);
         const li = document.createElement("li");
         li.className = "inventory-slot";
@@ -504,8 +1423,45 @@ function updateSkillMeta() {
 
 function updateSkillBars(delta) {
     ensureSkillUi();
+    if (!isModuleEnabled("renderer")) {
+        ui.debugUiUpdates.textContent = "UI updates/frame: --";
+        return;
+    }
     uiUpdates = 0;
     const now = performance.now();
+    const icon = document.querySelector(".skill-context .skill-icon");
+    if (icon) {
+        const bonusDecay = Math.exp(-delta * state.clickXpBonusDecayPerSecond);
+        state.clickXpBonus *= bonusDecay;
+        if (state.clickXpBonus < 0.000001) {
+            state.clickXpBonus = 0;
+        }
+
+        const decay = Math.exp(-delta * state.clickEnergyDecayPerSecond);
+        iconEnergyVelocity *= Math.exp(-delta * (state.clickEnergyDecayPerSecond + 1));
+        iconEnergy *= decay;
+        iconEnergy += iconEnergyVelocity;
+        if (iconEnergy < 0.001) {
+            iconEnergy = 0;
+            iconEnergyVelocity = 0;
+        }
+        iconEnergy = clamp(iconEnergy, 0, state.clickEnergyMax);
+        const energyRatio = state.clickEnergyMax > 0 ? iconEnergy / state.clickEnergyMax : 0;
+        const scale = 0.5 + energyRatio * 0.4;
+        const shift = energyRatio * 3.4;
+        const rot = energyRatio * 2.6;
+        icon.style.setProperty("--icon-energy-scale", scale.toFixed(3));
+        icon.style.setProperty("--icon-energy-shift", `${shift.toFixed(2)}px`);
+        icon.style.setProperty("--icon-energy-rot", `${rot.toFixed(2)}deg`);
+    }
+
+    if (ui.comboMeter && ui.comboValue && ui.comboFill) {
+        const ratio = state.clickXpBonusMax > 0 ? state.clickXpBonus / state.clickXpBonusMax : 0;
+        const percent = (state.clickXpBonus * 100).toFixed(2);
+        ui.comboValue.textContent = `+${percent}%`;
+        ui.comboFill.style.width = `${Math.min(100, Math.max(0, ratio * 100))}%`;
+        ui.comboMeter.classList.toggle("visible", state.clickXpBonus > 0.0001);
+    }
     if (iconComboLevel > 0 && now > iconComboExpireAt) {
         iconComboLevel = 0;
         const icon = document.querySelector(".skill-context .skill-icon");
@@ -547,6 +1503,7 @@ function updateSkillBars(delta) {
         }
         skillProgress.set(skill.id, clamped);
     });
+    ensureSelectedSkill();
     const selectedHold = skillCompletionHold.get(selectedSkillId) ?? 0;
     const selectedProgress = selectedHold > performance.now()
         ? 1
@@ -556,7 +1513,7 @@ function updateSkillBars(delta) {
     const selectedSkill = state.skills.find((s) => s.id === selectedSkillId);
     const isSelectedActive = Boolean(selectedSkill?.active);
     updateRingTip(clampedProgress, isSelectedActive);
-    if (isSelectedActive) {
+    if (isSelectedActive && state.ringParticlesEnabled) {
         emitRingParticles(selectedProgress, now);
     }
     ui.debugUiUpdates.textContent = `UI updates/frame: ${uiUpdates}`;
@@ -564,6 +1521,7 @@ function updateSkillBars(delta) {
 
 function emitRingParticles(progress, now) {
     if (!ui.contextRingParticles || !ui.contextRing || !ui.contextRingWrap) return;
+    if (!state.ringParticlesEnabled) return;
     const intensity = clamp(progress, 0, 1);
     const interval = 220 - intensity * 170;
     if (now - lastParticleTime < interval) return;
@@ -596,8 +1554,7 @@ function getRingMetrics() {
     const viewBox = (ui.contextRingSvg.getAttribute("viewBox") ?? "0 0 100 100").split(" ");
     const viewSize = Number(viewBox[2]) || 100;
     const radius = Number(ui.contextRingProgress.getAttribute("r") ?? RING_RADIUS);
-    const strokeWidth = Number.parseFloat(getComputedStyle(ui.contextRingProgress).strokeWidth || "0");
-    const radiusPx = (svgRect.width * radius) / viewSize + strokeWidth / 2;
+    const radiusPx = (svgRect.width * radius) / viewSize;
     return {
         centerX: svgRect.left - wrapRect.left + svgRect.width / 2,
         centerY: svgRect.top - wrapRect.top + svgRect.height / 2,
@@ -738,8 +1695,15 @@ function triggerSkillListLevelUp(skillId) {
 }
 
 function renderSkillContext() {
+    ensureSelectedSkill();
     const skill = state.skills.find((s) => s.id === selectedSkillId) ?? state.skills[0];
+    if (!skill) return;
     selectedSkillId = skill.id;
+    const activeTask = skill.tasks.find((task) => task.id === skill.task);
+    const activeTaskBadge = document.getElementById("activeTaskBadge");
+    if (activeTaskBadge) {
+        activeTaskBadge.innerHTML = `<span class="active-dot">●</span><span>Selected: ${activeTask?.label ?? "None"}</span>`;
+    }
     const iconContainer = document.querySelector(".skill-context .skill-icon");
     if (iconContainer) {
         iconContainer.classList.toggle("is-active", Boolean(skill.active));
@@ -760,38 +1724,56 @@ function renderSkillContext() {
     const nextXp = xpForLevel(skill.level + 1);
     ui.skillDetails.textContent = `${skill.xp.toLocaleString()} / ${nextXp.toLocaleString()} XP`;
     if (ui.contextRing) {
-        const holdUntil = skillCompletionHold.get(skill.id) ?? 0;
-        const progress = holdUntil > performance.now() ? 1 : (skillProgress.get(skill.id) ?? getProgress(skill));
-        const clampedProgress = clamp(progress, 0, 1);
-        setRingProgress(clampedProgress);
-        updateRingTip(clampedProgress, Boolean(skill.active));
+        if (isModuleEnabled("renderer")) {
+            const holdUntil = skillCompletionHold.get(skill.id) ?? 0;
+            const progress = holdUntil > performance.now() ? 1 : (skillProgress.get(skill.id) ?? getProgress(skill));
+            const clampedProgress = clamp(progress, 0, 1);
+            setRingProgress(clampedProgress);
+            updateRingTip(clampedProgress, Boolean(skill.active));
+        } else {
+            setRingProgress(0);
+            updateRingTip(0, false);
+        }
     }
 
-    ui.taskList.innerHTML = "";
-    skill.tasks.forEach((task) => {
-        const li = document.createElement("li");
-        const locked = skill.level < task.level;
-        const rewardItem = task.rewardItemId ? ITEM_DEFS[task.rewardItemId] : null;
-        const rewardIcon = rewardItem
-            ? `<img src="${rewardItem.icon}" alt="${rewardItem.name}" class="item-icon" />`
-            : "";
-        const taskIcon = task.iconImage
-            ? `<img src="${task.iconImage}" alt="${task.label}" class="item-icon task-icon" />`
-            : `<span>${locked ? "🔒" : "✅"}</span>`;
-        const labelSuffix = locked ? " • Locked" : "";
-        li.innerHTML = `${taskIcon}<div><div>${task.label}${labelSuffix}</div><div class="subtle">Level ${task.level} • ${task.reward}</div></div><span class="reward-icon">${rewardIcon}</span>`;
-        li.style.opacity = locked ? "0.5" : "1";
-        if (!locked) {
-            li.addEventListener("click", () => {
-                skill.task = task.id;
-                pendingTaskBounceId = task.id;
-                renderSkillContext();
-            });
-        }
-        if (skill.task === task.id) {
-            li.classList.add("selected");
-        }
-        if (pendingTaskBounceId === task.id) {
+    const taskListKey = `${skill.id}|${skill.level}|${skill.tasks.map((task) => `${task.id}:${task.level}:${task.iconImage ?? ""}:${task.rewardItemId ?? ""}`)
+        .join("|")}`;
+    if (taskListKey !== lastTaskListKey) {
+        ui.taskList.innerHTML = "";
+        skill.tasks.forEach((task) => {
+            const li = document.createElement("li");
+            li.dataset.taskId = task.id;
+            const locked = skill.level < task.level;
+            const rewardItem = task.rewardItemId ? ITEM_DEFS[task.rewardItemId] : null;
+            const rewardIcon = rewardItem
+                ? `<img src="${rewardItem.icon}" alt="${rewardItem.name}" class="item-icon" />`
+                : "";
+            const taskIcon = task.iconImage
+                ? `<img src="${task.iconImage}" alt="${task.label}" class="item-icon task-icon" />`
+                : `<span>${locked ? "🔒" : "✅"}</span>`;
+            const labelSuffix = locked ? " • Locked" : "";
+            li.innerHTML = `${taskIcon}<div><div>${task.label}${labelSuffix}</div><div class="subtle">Level ${task.level} • ${task.reward}</div></div><span class="reward-icon">${rewardIcon}</span>`;
+            li.style.opacity = locked ? "0.5" : "1";
+            if (!locked) {
+                li.addEventListener("click", () => {
+                    skill.task = task.id;
+                    pendingTaskBounceId = task.id;
+                    renderSkillContext();
+                });
+            }
+            if (skill.task === task.id) {
+                li.classList.add("selected");
+            }
+            ui.taskList.appendChild(li);
+        });
+        lastTaskListKey = taskListKey;
+    }
+
+    ui.taskList.querySelectorAll("li").forEach((li) => {
+        const taskId = li.dataset.taskId;
+        if (!taskId) return;
+        li.classList.toggle("selected", skill.task === taskId);
+        if (pendingTaskBounceId === taskId) {
             const iconEl = li.querySelector(".task-icon");
             if (iconEl) {
                 iconEl.classList.add("task-bounce");
@@ -800,7 +1782,6 @@ function renderSkillContext() {
                 });
             }
         }
-        ui.taskList.appendChild(li);
     });
     pendingTaskBounceId = null;
 
@@ -820,6 +1801,7 @@ function selectSkill(skillId) {
 }
 
 function toggleSkillAction() {
+    if (!isModuleEnabled("skills")) return;
     const skill = state.skills.find((s) => s.id === selectedSkillId);
     if (!skill) return;
     const currentlyActive = state.skills.find((s) => s.active);
@@ -827,11 +1809,15 @@ function toggleSkillAction() {
         currentlyActive.active = false;
     }
     skill.active = !skill.active;
+    if (skill.active) {
+        state.lastActiveSkillId = skill.id;
+    }
     updateSkillMeta();
     renderSkillContext();
 }
 
 function boostSkillLevels(skillId, amount) {
+    if (!isModuleEnabled("skills")) return;
     const skill = state.skills.find((s) => s.id === skillId);
     if (!skill || amount <= 0) return;
     const previousLevel = skill.level;
@@ -858,6 +1844,7 @@ function boostSkillLevels(skillId, amount) {
 }
 
 function applySkillXp(skill, amount, triggerEffects) {
+    if (!isModuleEnabled("skills")) return;
     if (!skill || amount <= 0) return;
     const previousLevel = skill.level;
     skill.xp += amount;
@@ -873,32 +1860,108 @@ function applySkillXp(skill, amount, triggerEffects) {
             pushIconCombo(gained);
             pendingIconBurstAt = holdUntil - 220;
             pendingIconBurstSkillId = skill.id;
+            addIconEnergy(state.clickEnergyLevelUpBoost + gained * state.clickEnergyLevelUpPerLevel);
         } else {
             triggerSkillListLevelUp(skill.id);
         }
     }
 }
 
+function applySkillTick(skill, triggerEffects) {
+    if (!skill) return;
+    const xpGain = skill.id === "gambling" ? 18 : 12;
+    const clickBonus = clamp(state.clickXpBonus, 0, state.clickXpBonusMax);
+    const adjustedXp = Math.max(0, Math.round(xpGain * state.skillXpMultiplier * (1 + clickBonus)));
+    applySkillXp(skill, adjustedXp, triggerEffects);
+    if (skill.id === "gambling") {
+        if (isModuleEnabled("inventory")) {
+            if (skill.task === "scratchers") {
+                const reward = Math.max(1, Math.round(randInt(1, 3) * state.rewardMultiplier));
+                addItemToInventory("chip_green", reward);
+            }
+            if (skill.task === "keno") {
+                const reward = Math.max(1, Math.round(randInt(1, 3) * state.rewardMultiplier));
+                addItemToInventory("chip_blue", reward);
+            }
+        }
+        if (isModuleEnabled("economy")) {
+            state.wallet.cash += Math.round(2 * state.cashMultiplier);
+        }
+    } else {
+        if (isModuleEnabled("economy")) {
+            state.wallet.cash += Math.round(1 * state.cashMultiplier);
+        }
+    }
+}
+
+function addIconEnergy(amount) {
+    const capped = clamp(amount, 0, state.clickEnergyMax);
+    iconEnergy = Math.min(state.clickEnergyMax, iconEnergy + capped);
+    iconEnergyVelocity += capped * 0.35;
+}
+
+function triggerIconClickBurst() {
+    const icon = document.querySelector(".skill-context .skill-icon");
+    if (!icon) return;
+    icon.classList.remove("click-burst");
+    void icon.offsetWidth;
+    icon.classList.add("click-burst");
+    icon.addEventListener("animationend", () => icon.classList.remove("click-burst"), { once: true });
+}
+
+function spawnClickPop(event) {
+    const icon = event.currentTarget;
+    if (!(icon instanceof HTMLElement)) return;
+    const rect = icon.getBoundingClientRect();
+    const jitterX = (Math.random() - 0.5) * 12;
+    const jitterY = (Math.random() - 0.5) * 10;
+    const driftX = (Math.random() - 0.5) * 140;
+    const driftY = -(70 + Math.random() * 50);
+    const driftRot = (Math.random() - 0.5) * 30;
+    const midScale = 0.35;
+    const rawX = event.clientX - rect.left;
+    const rawY = event.clientY - rect.top;
+    const percentX = rect.width > 0 ? (rawX / rect.width) * 100 : 50;
+    const percentY = rect.height > 0 ? (rawY / rect.height) * 100 : 50;
+    const pop = document.createElement("span");
+    const bonus = (state.clickXpBonusPerClick * 100).toFixed(2);
+    pop.className = "click-pop";
+    pop.textContent = `+${bonus}%`;
+    pop.style.left = `${percentX}%`;
+    pop.style.top = `${percentY}%`;
+    pop.style.marginLeft = `${jitterX}px`;
+    pop.style.marginTop = `${jitterY}px`;
+    pop.style.setProperty("--pop-dx-mid", `${driftX * midScale}px`);
+    pop.style.setProperty("--pop-dy-mid", `${driftY * midScale}px`);
+    pop.style.setProperty("--pop-rot-mid", `${driftRot * midScale}deg`);
+    pop.style.setProperty("--pop-dx-end", `${driftX}px`);
+    pop.style.setProperty("--pop-dy-end", `${driftY}px`);
+    pop.style.setProperty("--pop-rot-end", `${driftRot}deg`);
+    icon.appendChild(pop);
+    pop.addEventListener("animationend", () => pop.remove(), { once: true });
+}
+
+function applyActiveSkillClick() {
+    if (state.isLocked || !isModuleEnabled("skills")) return;
+    const skill = state.skills.find((entry) => entry.id === selectedSkillId);
+    if (!skill) return;
+    state.clickXpBonus = clamp(
+        state.clickXpBonus + state.clickXpBonusPerClick,
+        0,
+        state.clickXpBonusMax
+    );
+    addIconEnergy(state.clickEnergyPerClick);
+    triggerIconClickBurst();
+    updateLists();
+    updateInspectors();
+}
+
 function tickOnce() {
-    if (state.isLocked) return;
+    if (state.isLocked || !isModuleEnabled("simulation")) return;
     state.tick += 1;
     const active = state.skills.find((s) => s.active);
     if (active) {
-        const xpGain = active.id === "gambling" ? 18 : 12;
-        applySkillXp(active, xpGain, true);
-        if (active.id === "gambling") {
-            if (active.task === "scratchers") {
-                const reward = randInt(1, 3);
-                addItemToInventory("chip_green", reward);
-            }
-            if (active.task === "keno") {
-                const reward = randInt(1, 3);
-                addItemToInventory("chip_blue", reward);
-            }
-            state.wallet.cash += 2;
-        } else {
-            state.wallet.cash += 1;
-        }
+        applySkillTick(active, true);
     }
     const combatLine = state.tick % 2 === 0 ? "player hits slime (3)" : "slime misses";
     state.combat.unshift(combatLine);
@@ -917,7 +1980,7 @@ function runOffline(seconds) {
     ui.debugOnline.textContent = "Online";
 }
 
-function saveSnapshot() {
+function saveSnapshot(silent = false) {
     const snapshot = {
         tick: state.tick,
         wallet: state.wallet,
@@ -929,15 +1992,30 @@ function saveSnapshot() {
             active: skill.active,
             task: skill.task
         })),
+        selectedSkillId,
+        lastActiveSkillId: state.lastActiveSkillId,
+        moduleState: {
+            modules: moduleState,
+            values: {
+                tickRate: state.tickRate,
+                skillXpMultiplier: state.skillXpMultiplier,
+                rewardMultiplier: state.rewardMultiplier,
+                cashMultiplier: state.cashMultiplier,
+                ringParticlesEnabled: state.ringParticlesEnabled,
+                zoom: state.zoom
+            }
+        },
         saveStatus: "Saved"
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-    state.saveStatus = "Saved";
-    updateLists();
+    persistSnapshot(snapshot);
+    if (!silent) {
+        state.saveStatus = "Saved";
+        updateLists();
+    }
 }
 
 function loadSnapshot() {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = loadSnapshotFromStorage();
     if (!raw) {
         state.saveStatus = "No snapshot";
         updateLists();
@@ -965,7 +2043,6 @@ function loadSnapshot() {
                 return slots;
             });
     }
-    state.saveStatus = "Loaded";
     if (Array.isArray(snapshot.skills)) {
         snapshot.skills.forEach((entry) => {
             const skill = state.skills.find((s) => s.id === entry.id);
@@ -977,7 +2054,73 @@ function loadSnapshot() {
         });
     }
 
+    if (snapshot?.moduleState) {
+        Object.entries(snapshot.moduleState.modules ?? {}).forEach(([key, value]) => {
+            moduleState[key] = { enabled: value?.enabled !== false };
+        });
+        const values = snapshot.moduleState.values ?? {};
+        if (Number.isFinite(values.tickRate)) {
+            state.tickRate = values.tickRate;
+        }
+        if (Number.isFinite(values.skillXpMultiplier)) {
+            state.skillXpMultiplier = values.skillXpMultiplier;
+        }
+        if (Number.isFinite(values.rewardMultiplier)) {
+            state.rewardMultiplier = values.rewardMultiplier;
+        }
+        if (Number.isFinite(values.cashMultiplier)) {
+            state.cashMultiplier = values.cashMultiplier;
+        }
+        if (typeof values.ringParticlesEnabled === "boolean") {
+            state.ringParticlesEnabled = values.ringParticlesEnabled;
+        }
+        if (Number.isFinite(values.zoom)) {
+            state.zoom = values.zoom;
+        }
+    }
+    if (snapshot?.selectedSkillId) {
+        selectedSkillId = snapshot.selectedSkillId;
+    }
+    if (snapshot?.lastActiveSkillId) {
+        state.lastActiveSkillId = snapshot.lastActiveSkillId;
+    }
+    const activeSkill = state.skills.find((skill) => skill.active);
+    if (activeSkill) {
+        selectedSkillId = activeSkill.id;
+        state.lastActiveSkillId = activeSkill.id;
+    }
+    state.saveStatus = "Loaded";
+    applyZoom(state.zoom);
+    applyTickRate(state.tickRate);
+    persistModuleState();
+
     updateLists();
+}
+
+function resetDevAccount() {
+    state.tick = 0;
+    state.wallet = { cash: 0, credit: 0 };
+    state.inventorySlots = [];
+    state.inventoryHistory = {};
+    state.skills.forEach((skill) => {
+        skill.level = 1;
+        skill.xp = 0;
+        skill.active = false;
+        if (skill.id === "gambling") {
+            skill.task = "scratchers";
+        } else if (skill.id === "idling") {
+            skill.task = "idle";
+        }
+    });
+    state.combat = ["player hits slime (3)", "slime misses"];
+    state.quests = ["Win Scratchers (0/5)", "Play Keno (0/3)"];
+    state.achievements = ["High Roller (0/10)", "Stack Chips (0/12)"];
+    state.collections = ["Gambling Set: 0/3"];
+    state.saveStatus = "Reset";
+    state.lastActiveSkillId = null;
+    selectedSkillId = state.skills[0]?.id ?? "gambling";
+    updateLists();
+    saveSnapshot(true);
 }
 
 function updateLists() {
@@ -1100,6 +2243,201 @@ function updateInspectors() {
         row.appendChild(addLarge);
         ui.skillInspector.appendChild(row);
     });
+
+    renderContentPacks();
+    renderModules();
+}
+
+function renderContentPacks() {
+    if (!ui.contentPackInspector) return;
+    ui.contentPackInspector.innerHTML = "";
+    state.contentPacks.forEach((pack) => {
+        const card = document.createElement("div");
+        card.className = "module-card";
+        if (!pack.enabled) {
+            card.classList.add("is-disabled");
+        }
+
+        const header = document.createElement("div");
+        header.className = "module-header";
+        header.innerHTML = `
+            <div>
+                <div class="module-title">${pack.name}</div>
+                <div class="subtle">v${pack.version} • ${pack.id}</div>
+                <div class="subtle">${pack.description ?? ""}</div>
+            </div>
+        `;
+        const toggle = document.createElement("button");
+        toggle.className = "button ghost";
+        toggle.textContent = pack.enabled ? "Enabled" : "Disabled";
+        toggle.onclick = () => {
+            pack.enabled = !pack.enabled;
+            renderContentPacks();
+        };
+        header.appendChild(toggle);
+        card.appendChild(header);
+
+        const props = [
+            { label: "Skills", value: state.skills.length },
+            { label: "Items", value: Object.keys(ITEM_DEFS).length },
+            { label: "Modules", value: moduleDefinitions.length + externalModules.length }
+        ];
+        props.forEach((prop) => {
+            const row = document.createElement("div");
+            row.className = "module-prop";
+            row.innerHTML = `<span>${prop.label}</span><span class="subtle">${prop.value}</span>`;
+            card.appendChild(row);
+        });
+        ui.contentPackInspector.appendChild(card);
+    });
+}
+
+function renderModules() {
+    if (!ui.moduleInspector) return;
+    ui.moduleInspector.innerHTML = "";
+
+    const allModules = [...moduleDefinitions, ...externalModules];
+    allModules.forEach((module) => {
+        const isExternal = !moduleDefinitions.some((definition) => definition.id === module.id);
+        const card = document.createElement("div");
+        card.className = "module-card";
+
+        const header = document.createElement("div");
+        header.className = "module-header";
+        header.innerHTML = `
+            <div>
+                <div class="module-title">${module.name}</div>
+                <div class="subtle">v${module.version ?? "1.0.0"} • ${module.id}${isExternal ? " • external" : ""}</div>
+                <div class="subtle">${module.description ?? ""}</div>
+            </div>
+        `;
+        const toggle = document.createElement("button");
+        toggle.className = "button ghost";
+        const enabled = isExternal ? module.enabled !== false : isModuleEnabled(module.id);
+        toggle.textContent = enabled ? "Enabled" : "Disabled";
+        toggle.onclick = () => {
+            if (isExternal) {
+                module.enabled = !(module.enabled !== false);
+            } else {
+                moduleState[module.id] = { enabled: !enabled };
+                if (module.id === "simulation") {
+                    refreshTickLoop();
+                }
+            }
+            persistModuleState();
+            renderModules();
+        };
+        header.appendChild(toggle);
+        card.appendChild(header);
+
+        (module.properties ?? []).forEach((prop) => {
+            const row = document.createElement("div");
+            row.className = "module-prop";
+            const label = document.createElement("span");
+            label.textContent = prop.label ?? prop.id;
+            const value = document.createElement("span");
+            value.className = "subtle";
+            if (prop.type === "boolean") {
+                const input = document.createElement("input");
+                input.type = "checkbox";
+                input.checked = Boolean(prop.get ? prop.get() : prop.value);
+                input.onchange = () => {
+                    if (prop.set) {
+                        prop.set(input.checked);
+                    } else {
+                        prop.value = input.checked;
+                    }
+                    persistModuleState();
+                    renderModules();
+                };
+                row.appendChild(label);
+                row.appendChild(input);
+            } else {
+                const input = document.createElement("input");
+                input.className = "text-input";
+                input.type = "number";
+                input.min = prop.min ?? 0;
+                input.max = prop.max ?? 999;
+                input.step = prop.step ?? 1;
+                input.value = prop.get ? prop.get() : prop.value ?? 0;
+                input.onchange = () => {
+                    const next = Number(input.value);
+                    if (prop.set) {
+                        prop.set(next);
+                    } else {
+                        prop.value = next;
+                    }
+                    persistModuleState();
+                    renderModules();
+                };
+                value.textContent = input.value;
+                input.oninput = () => {
+                    value.textContent = input.value;
+                };
+                row.appendChild(label);
+                row.appendChild(input);
+                row.appendChild(value);
+            }
+            card.appendChild(row);
+        });
+
+        ui.moduleInspector.appendChild(card);
+    });
+}
+
+function normalizeExternalModule(module) {
+    if (!module || typeof module !== "object") return null;
+    const id = String(module.id ?? "").trim();
+    if (!id) return null;
+    const properties = Array.isArray(module.properties) ? module.properties : [];
+    return {
+        id,
+        name: String(module.name ?? id),
+        version: String(module.version ?? "1.0.0"),
+        enabled: module.enabled !== false,
+        description: String(module.description ?? ""),
+        properties: properties
+            .map((prop) => ({
+                id: String(prop.id ?? ""),
+                label: String(prop.label ?? prop.id ?? "Property"),
+                type: prop.type === "boolean" ? "boolean" : "number",
+                value: prop.type === "boolean" ? Boolean(prop.value) : Number(prop.value ?? 0),
+                min: Number.isFinite(prop.min) ? prop.min : 0,
+                max: Number.isFinite(prop.max) ? prop.max : 999,
+                step: Number.isFinite(prop.step) ? prop.step : 1
+            }))
+            .filter((prop) => prop.id)
+    };
+}
+
+function loadExternalModulesFromInput() {
+    if (!ui.externalModuleInput) return;
+    const raw = ui.externalModuleInput.value.trim();
+    if (!raw) return;
+    try {
+        const parsed = JSON.parse(raw);
+        const modules = Array.isArray(parsed) ? parsed : [parsed];
+        externalModules.length = 0;
+        modules.forEach((module) => {
+            const normalized = normalizeExternalModule(module);
+            if (normalized) {
+                externalModules.push(normalized);
+            }
+        });
+        persistModuleState();
+        renderModules();
+    } catch (error) {
+        console.warn("Failed to load external modules", error);
+    }
+}
+
+function clearExternalModules() {
+    externalModules.length = 0;
+    if (ui.externalModuleInput) {
+        ui.externalModuleInput.value = "";
+    }
+    persistModuleState();
+    renderModules();
 }
 
 function animate(now) {
@@ -1119,8 +2457,363 @@ function animate(now) {
         fpsElapsed = 0;
     }
     updateSkillBars(delta);
+    if (modelRenderer && isModuleEnabled("renderer3d")) {
+        modelRenderer.render(now / 1000);
+    }
     lastUiUpdateCount = uiUpdates;
     requestAnimationFrame(animate);
+}
+
+function initializeModelPreviews() {
+    const containers = document.querySelectorAll(".model-preview");
+    if (!containers.length) return;
+    if (!isModuleEnabled("renderer3d")) {
+        containers.forEach((container) => {
+            renderModelMessage(container, "3D preview disabled", container.dataset.fallback);
+        });
+        return;
+    }
+    if (!window.THREE) {
+        containers.forEach((container) => {
+            renderModelMessage(container, "Loading Three.js...", container.dataset.fallback);
+        });
+        ensureThreeJs().then((ready) => {
+            if (ready) {
+                initializeModelPreviews();
+            } else {
+                containers.forEach((container) => {
+                    renderModelMessage(container, "Three.js not loaded", container.dataset.fallback);
+                });
+            }
+        });
+        return;
+    }
+    if (!modelRenderer) {
+        modelRenderer = new ModelRenderer();
+    }
+    containers.forEach((container) => {
+        const url = container.dataset.model;
+        const fallback = container.dataset.fallback;
+        const wobble = container.dataset.wobble !== "false";
+        const spin = container.dataset.spin === "true";
+        const spinSpeed = Number(container.dataset.spinSpeed || 0.6);
+        if (!url) {
+            renderModelMessage(container, "Select a model to preview", fallback);
+            return;
+        }
+        modelRenderer.register(container, {
+            url,
+            fallback,
+            wobble,
+            spin,
+            spinSpeed
+        });
+    });
+    modelRenderer.refreshSizes();
+}
+
+function renderModelMessage(container, message, fallback) {
+    container.innerHTML = "";
+    const wrapper = document.createElement("div");
+    wrapper.className = "model-fallback";
+    if (fallback) {
+        const img = document.createElement("img");
+        img.src = fallback;
+        img.alt = "";
+        img.className = "item-icon";
+        wrapper.appendChild(img);
+    }
+    const label = document.createElement("span");
+    label.textContent = message;
+    wrapper.appendChild(label);
+    container.appendChild(wrapper);
+}
+
+function refreshModelPreviews() {
+    if (!modelRenderer || !isModuleEnabled("renderer3d")) return;
+    modelRenderer.refreshSizes();
+}
+
+class ModelRenderer {
+    constructor() {
+        this.sprites = new Set();
+        const objCtor = objLoaderCtor ?? window.THREE?.OBJLoader ?? window.OBJLoader;
+        const gltfCtor = gltfLoaderCtor ?? window.THREE?.GLTFLoader ?? window.GLTFLoader;
+        this.objLoader = objCtor ? new objCtor() : null;
+        this.gltfLoader = gltfCtor ? new gltfCtor() : null;
+        if (this.objLoader?.setCrossOrigin) {
+            this.objLoader.setCrossOrigin("anonymous");
+        }
+        if (this.gltfLoader?.setCrossOrigin) {
+            this.gltfLoader.setCrossOrigin("anonymous");
+        }
+        this.cache = new Map();
+    }
+
+    register(container, options) {
+        if (!(container instanceof HTMLElement) || container.dataset.modelReady === "true") return;
+        container.dataset.modelReady = "loading";
+        const { url, fallback, wobble, spin, spinSpeed } = options;
+        if (!window.THREE) {
+            this.renderFallback(container, fallback);
+            return;
+        }
+        const renderer = new window.THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setClearColor(0x000000, 0);
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        if (window.THREE.SRGBColorSpace) {
+            renderer.outputColorSpace = window.THREE.SRGBColorSpace;
+        }
+        renderer.toneMapping = window.THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        const scene = new window.THREE.Scene();
+        const camera = new window.THREE.PerspectiveCamera(35, 1, 0.1, 100);
+        camera.position.set(0, 0, 6);
+
+        const ambient = new window.THREE.AmbientLight(0xffffff, 0.8);
+        const hemi = new window.THREE.HemisphereLight(0xffffff, 0x223344, 0.55);
+        const key = new window.THREE.DirectionalLight(0xffffff, 0.9);
+        key.position.set(3, 4, 6);
+        scene.add(ambient, hemi, key);
+
+        container.innerHTML = "";
+        container.appendChild(renderer.domElement);
+        const status = this.renderStatus(container, "Loading model...");
+
+        const sprite = {
+            container,
+            renderer,
+            scene,
+            camera,
+            root: null,
+            wobble: Boolean(wobble),
+            spin: Boolean(spin),
+            spinSpeed: Number.isFinite(spinSpeed) ? spinSpeed : 0.6,
+            wobbleOffset: Math.random() * 10,
+            resizeObserver: null,
+            statusEl: status
+        };
+
+        this.applySize(sprite);
+        sprite.resizeObserver = new ResizeObserver(() => this.applySize(sprite));
+        sprite.resizeObserver.observe(container);
+
+        this.loadModel(url)
+            .then((object) => {
+                const clone = object.clone(true);
+                const bounds = this.prepareModel(clone);
+                sprite.root = clone;
+                sprite.scene.add(clone);
+                if (bounds) {
+                    this.fitCamera(sprite, bounds);
+                }
+                container.dataset.modelReady = "true";
+                sprite.statusEl?.remove();
+            })
+            .catch((error) => {
+                this.renderFallback(container, fallback, error);
+                delete container.dataset.modelReady;
+                this.dispose(sprite);
+                this.sprites.delete(sprite);
+            });
+
+        this.sprites.add(sprite);
+    }
+
+    render(time) {
+        for (const sprite of Array.from(this.sprites)) {
+            if (!sprite.container.isConnected) {
+                this.dispose(sprite);
+                this.sprites.delete(sprite);
+                continue;
+            }
+            if (sprite.root) {
+                const t = time + sprite.wobbleOffset;
+                if (sprite.wobble) {
+                    sprite.root.rotation.y = t * 0.6;
+                    sprite.root.rotation.x = Math.sin(t * 1.4) * 0.2;
+                    sprite.root.position.y = Math.sin(t * 1.1) * 0.12;
+                } else if (sprite.spin) {
+                    sprite.root.rotation.y = t * sprite.spinSpeed;
+                }
+            }
+            sprite.renderer.render(sprite.scene, sprite.camera);
+        }
+    }
+
+    applySize(sprite) {
+        const size = sprite.container.getBoundingClientRect();
+        const width = Math.max(1, Math.floor(size.width));
+        const height = Math.max(1, Math.floor(size.height));
+        sprite.renderer.setSize(width, height, false);
+        sprite.camera.aspect = width / height;
+        sprite.camera.updateProjectionMatrix();
+    }
+
+    refreshSizes() {
+        for (const sprite of Array.from(this.sprites)) {
+            if (!sprite.container.isConnected) continue;
+            this.applySize(sprite);
+        }
+    }
+
+    prepareModel(object) {
+        object.traverse((child) => {
+            if (child.isMesh) {
+                child.material = this.normalizeMaterial(child.material);
+                child.castShadow = false;
+                child.receiveShadow = false;
+            }
+        });
+        const box = new window.THREE.Box3().setFromObject(object);
+        const size = new window.THREE.Vector3();
+        box.getSize(size);
+        const maxAxis = Math.max(size.x, size.y, size.z) || 1;
+        const scale = 2.6 / maxAxis;
+        object.scale.setScalar(scale);
+        box.setFromObject(object);
+        const center = new window.THREE.Vector3();
+        box.getCenter(center);
+        object.position.sub(center);
+        const sphere = new window.THREE.Sphere();
+        box.getBoundingSphere(sphere);
+        return {
+            radius: sphere.radius || 1
+        };
+    }
+
+    normalizeMaterial(material) {
+        if (Array.isArray(material)) {
+            return material.map((entry) => this.normalizeMaterial(entry));
+        }
+        const baseColor = material?.color?.getHex?.() ?? 0xffffff;
+        const map = material?.map ?? null;
+        const normalized = material instanceof window.THREE.MeshStandardMaterial
+            ? material.clone()
+            : new window.THREE.MeshStandardMaterial({ color: baseColor });
+        if (map) {
+            normalized.map = map;
+        }
+        normalized.roughness = Number.isFinite(material?.roughness) ? material.roughness : 0.55;
+        normalized.metalness = Number.isFinite(material?.metalness) ? material.metalness : 0.15;
+        normalized.emissive = normalized.emissive?.clone?.() ?? new window.THREE.Color(baseColor);
+        normalized.emissiveIntensity = 0.18;
+        if (material?.isSkinnedMesh || material?.skinning) {
+            normalized.skinning = true;
+        }
+        normalized.side = window.THREE.DoubleSide;
+        normalized.needsUpdate = true;
+        return normalized;
+    }
+
+    fitCamera(sprite, bounds) {
+        if (!bounds?.radius || !sprite?.camera) return;
+        const radius = Math.max(0.5, bounds.radius);
+        const fov = (sprite.camera.fov * Math.PI) / 180;
+        const distance = (radius / Math.tan(fov / 2)) * 1.2;
+        sprite.camera.position.set(0, radius * 0.2, distance);
+        sprite.camera.near = Math.max(0.01, distance - radius * 4);
+        sprite.camera.far = distance + radius * 4;
+        sprite.camera.lookAt(0, 0, 0);
+        sprite.camera.updateProjectionMatrix();
+    }
+
+    loadModel(url) {
+        if (!url) return Promise.reject(new Error("Missing model URL"));
+        if (this.cache.has(url)) return this.cache.get(url);
+        const promise = this.loadModelInternal(url);
+        this.cache.set(url, promise);
+        return promise;
+    }
+
+    async loadModelInternal(url) {
+        const loader = await this.ensureLoader(url);
+        if (!loader) throw new Error("No loader available for model");
+        const isGltf = this.isGltf(url);
+        return new Promise((resolve, reject) => {
+            loader.load(url, (loaded) => {
+                resolve(isGltf ? loaded.scene : loaded);
+            }, undefined, reject);
+        });
+    }
+
+    async ensureLoader(url) {
+        if (this.isGltf(url)) {
+            if (!this.gltfLoader) {
+                await ensureThreeJs();
+                const ctor = window.THREE?.GLTFLoader ?? window.GLTFLoader;
+                this.gltfLoader = ctor ? new ctor() : null;
+                if (this.gltfLoader?.setCrossOrigin) {
+                    this.gltfLoader.setCrossOrigin("anonymous");
+                }
+            }
+            return this.gltfLoader;
+        }
+        if (!this.objLoader) {
+            await ensureThreeJs();
+            const ctor = window.THREE?.OBJLoader ?? window.OBJLoader;
+            this.objLoader = ctor ? new ctor() : null;
+            if (this.objLoader?.setCrossOrigin) {
+                this.objLoader.setCrossOrigin("anonymous");
+            }
+        }
+        return this.objLoader;
+    }
+
+    isGltf(url) {
+        const clean = url.split("?")[0].toLowerCase();
+        return clean.endsWith(".glb") || clean.endsWith(".gltf");
+    }
+
+    getLoader(url) {
+        return this.isGltf(url) ? this.gltfLoader : this.objLoader;
+    }
+
+    renderFallback(container, fallback, error) {
+        container.innerHTML = "";
+        const wrapper = document.createElement("div");
+        wrapper.className = "model-fallback";
+        if (fallback) {
+            const img = document.createElement("img");
+            img.src = fallback;
+            img.alt = "";
+            img.className = "item-icon";
+            wrapper.appendChild(img);
+        }
+        const label = document.createElement("span");
+        label.textContent = error ? "Model preview unavailable" : "Model preview";
+        wrapper.appendChild(label);
+        container.appendChild(wrapper);
+        if (error) {
+            console.warn("Model preview failed", error);
+        }
+    }
+
+    renderStatus(container, message) {
+        const status = document.createElement("div");
+        status.className = "model-status";
+        status.textContent = message;
+        container.appendChild(status);
+        return status;
+    }
+
+    dispose(sprite) {
+        sprite.resizeObserver?.disconnect();
+        sprite.renderer?.dispose();
+    }
+}
+
+function initializeModelIcons() {
+    if (!isModuleEnabled("renderer3d")) return;
+    if (!window.THREE) return;
+    if (!modelRenderer) {
+        modelRenderer = new ModelRenderer();
+    }
+    document.querySelectorAll(".model-icon").forEach((container) => {
+        const url = container.dataset.model;
+        const fallback = container.dataset.fallback;
+        modelRenderer.register(container, { url, fallback, wobble: true });
+    });
 }
 
 function setupTabs() {
@@ -1143,8 +2836,11 @@ function setupTabs() {
             container.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.remove("active"));
             button.classList.add("active");
             container.querySelector(`.tab-panel[data-panel='${target}']`).classList.add("active");
+            refreshModelPreviews();
         });
     });
+
+    initializeModelPreviews();
 }
 
 function setupSplitters() {
@@ -1156,15 +2852,21 @@ function setupSplitters() {
     let draggingVertical = false;
     let draggingHorizontal = false;
 
+    if (!layout || !right || !splitter) {
+        return;
+    }
+
     splitter.addEventListener("pointerdown", (event) => {
         draggingVertical = true;
         splitter.setPointerCapture(event.pointerId);
     });
 
-    splitterHorizontal.addEventListener("pointerdown", (event) => {
-        draggingHorizontal = true;
-        splitterHorizontal.setPointerCapture(event.pointerId);
-    });
+    if (splitterHorizontal && gameView) {
+        splitterHorizontal.addEventListener("pointerdown", (event) => {
+            draggingHorizontal = true;
+            splitterHorizontal.setPointerCapture(event.pointerId);
+        });
+    }
 
     window.addEventListener("pointermove", (event) => {
         if (draggingVertical) {
@@ -1173,7 +2875,7 @@ function setupSplitters() {
             layout.style.gridTemplateColumns = `${width}px 8px minmax(420px, 1fr)`;
         }
 
-        if (draggingHorizontal) {
+        if (draggingHorizontal && splitterHorizontal && gameView) {
             const rect = right.getBoundingClientRect();
             const height = clamp(event.clientY - rect.top, 180, 420);
             gameView.style.height = `${height}px`;
@@ -1187,8 +2889,60 @@ function setupSplitters() {
 }
 
 function setupControls() {
-    document.getElementById("openDebug").onclick = () => ui.debugOverlay.classList.remove("hidden");
-    document.getElementById("closeDebug").onclick = () => ui.debugOverlay.classList.add("hidden");
+    if (DEV_MODE) {
+        const openDebug = document.getElementById("openDebug");
+        const closeDebug = document.getElementById("closeDebug");
+        if (openDebug && ui.debugOverlay) {
+            openDebug.onclick = () => {
+                ui.debugOverlay.classList.remove("hidden");
+                initializeModelPreviews();
+                requestAnimationFrame(() => refreshModelPreviews());
+            };
+        }
+        if (closeDebug && ui.debugOverlay) {
+            closeDebug.onclick = () => ui.debugOverlay.classList.add("hidden");
+        }
+    }
+    if (ui.openErrorsBtn && ui.errorDialog) {
+        ui.openErrorsBtn.onclick = () => {
+            ui.errorDialog.classList.remove("hidden");
+            renderErrorList();
+        };
+    }
+    if (ui.closeErrorsBtn && ui.errorDialog) {
+        ui.closeErrorsBtn.onclick = () => ui.errorDialog.classList.add("hidden");
+    }
+    if (ui.copyErrorsBtn) {
+        ui.copyErrorsBtn.onclick = async () => {
+            const payload = errorLog.map((entry) => {
+                return [
+                    `[${entry.time}] ${entry.level.toUpperCase()}: ${entry.message}`,
+                    entry.details
+                ].join("\n");
+            }).join("\n\n");
+            if (!payload) return;
+            try {
+                await navigator.clipboard.writeText(payload);
+            } catch {
+                if (ui.errorDetails) {
+                    ui.errorDetails.value = payload;
+                    ui.errorDetails.focus();
+                    ui.errorDetails.select();
+                }
+            }
+        };
+    }
+    if (ui.clearErrorsBtn) {
+        ui.clearErrorsBtn.onclick = () => {
+            errorLog.length = 0;
+            if (ui.errorDetails) {
+                ui.errorDetails.value = "";
+            }
+            renderErrorList();
+            updateErrorButton();
+        };
+    }
+    setupModelUpload();
     ui.taskAction.onclick = toggleSkillAction;
     document.getElementById("tickBtn").onclick = tickOnce;
     document.getElementById("offlineBtn").onclick = () => runOffline(10);
@@ -1199,6 +2953,10 @@ function setupControls() {
     };
     document.getElementById("saveBtn").onclick = saveSnapshot;
     document.getElementById("loadBtn").onclick = loadSnapshot;
+    const resetBtn = document.getElementById("resetDevBtn");
+    if (resetBtn && DEV_MODE) {
+        resetBtn.onclick = resetDevAccount;
+    }
     document.getElementById("toggleSandbox").onclick = () => {
         state.sandboxEnabled = !state.sandboxEnabled;
         refreshToggleButtons();
@@ -1207,6 +2965,16 @@ function setupControls() {
         state.isLocked = !state.isLocked;
         refreshToggleButtons();
     };
+
+    if (ui.debugSizeToggle && ui.debugOverlay && ui.debugOverlayPanel) {
+        ui.debugSizeToggle.onclick = () => {
+            const expanded = ui.debugOverlayPanel.classList.toggle("expanded");
+            ui.debugOverlay.classList.toggle("expanded", expanded);
+            ui.debugSizeToggle.textContent = expanded ? "⤡" : "⤢";
+            ui.debugSizeToggle.title = expanded ? "Contract debug panel" : "Expand debug panel";
+            requestAnimationFrame(() => refreshModelPreviews());
+        };
+    }
 
     const levelButtons = document.querySelectorAll("[data-level-boost]");
     levelButtons.forEach((btn) => {
@@ -1228,11 +2996,94 @@ function setupControls() {
     }
 
     ui.zoomSlider.oninput = (event) => {
-        state.zoom = Number(event.target.value);
-        document.getElementById("app").style.transform = `scale(${state.zoom})`;
-        document.getElementById("app").style.transformOrigin = "top left";
-        ui.zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
+        applyZoom(event.target.value);
     };
+
+    if (ui.loadModulesBtn) {
+        ui.loadModulesBtn.onclick = () => loadExternalModulesFromInput();
+    }
+    if (ui.clearModulesBtn) {
+        ui.clearModulesBtn.onclick = () => clearExternalModules();
+    }
+
+    if (ui.openThemeBtn && ui.themeDialog) {
+        ui.openThemeBtn.onclick = () => {
+            ui.themeDialog.classList.remove("hidden");
+            renderThemeList();
+        };
+    }
+    if (ui.closeThemeBtn && ui.themeDialog) {
+        ui.closeThemeBtn.onclick = () => ui.themeDialog.classList.add("hidden");
+    }
+    if (ui.applyThemeJson && ui.themeJson) {
+        ui.applyThemeJson.onclick = () => {
+            try {
+                const payload = JSON.parse(ui.themeJson.value);
+                ThemeManager.updateFromJson(payload);
+            } catch (error) {
+                console.warn("Invalid theme JSON", error);
+            }
+        };
+    }
+    if (ui.reloadThemesBtn) {
+        ui.reloadThemesBtn.onclick = () => {
+            ThemeManager.loadBuiltIns();
+            ThemeManager.restore();
+        };
+    }
+
+    const skillIcon = document.querySelector(".skill-context .skill-icon");
+    if (skillIcon) {
+        skillIcon.addEventListener("click", (event) => {
+            spawnClickPop(event);
+            applyActiveSkillClick();
+        });
+    }
+}
+
+function setupModelUpload() {
+    const input = ui.modelUploadInput;
+    const clearBtn = ui.modelClearBtn;
+    const nameLabel = ui.modelUploadName;
+    const preview = document.querySelector(".model-preview.model-viewport");
+    if (!input || !preview) return;
+
+    const setLabel = (text) => {
+        if (nameLabel) {
+            nameLabel.textContent = text;
+        }
+    };
+
+    const setPreviewUrl = (url) => {
+        preview.dataset.model = url || "";
+        delete preview.dataset.modelReady;
+        initializeModelPreviews();
+    };
+
+    input.addEventListener("change", () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (modelUploadUrl) {
+            URL.revokeObjectURL(modelUploadUrl);
+        }
+        modelUploadUrl = URL.createObjectURL(file);
+        setLabel(file.name);
+        setPreviewUrl(modelUploadUrl);
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            if (modelUploadUrl) {
+                URL.revokeObjectURL(modelUploadUrl);
+                modelUploadUrl = null;
+            }
+            if (input) {
+                input.value = "";
+            }
+            setLabel("No file selected.");
+            setPreviewUrl("");
+        });
+    }
 }
 
 function refreshToggleButtons() {
@@ -1243,6 +3094,9 @@ function refreshToggleButtons() {
 }
 
 async function setupPixi() {
+    if (!isModuleEnabled("renderer")) {
+        return;
+    }
     if (!window.PIXI) {
         console.warn("PIXI not loaded - skipping renderer init.");
         return;
@@ -1305,10 +3159,23 @@ function setupPwa() {
 }
 
 async function main() {
+    setupErrorLogging();
+    restoreModuleState();
+    if (DEV_MODE && localStorage.getItem(STORAGE_KEY)) {
+        loadSnapshot();
+    }
+    ensureSelectedSkill();
+    ThemeManager.loadBuiltIns();
+    ThemeManager.restore();
+    applyDevModeUI();
+    updateErrorButton();
+
     ui.debugTickRate.textContent = `Tick rate: ${state.tickRate}/s`;
     ui.debugOnline.textContent = "Online";
     ui.debugOffline.textContent = `Last offline: ${lastOfflineSeconds}s`;
     ui.debugUiUpdates.textContent = "UI updates/frame: --";
+    applyZoom(state.zoom);
+    applyTickRate(state.tickRate);
     renderSkills();
     updateLists();
     updateInspectors();
@@ -1319,6 +3186,12 @@ async function main() {
     setupControls();
     await setupPixi();
     setupPwa();
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            saveSnapshot(true);
+        }
+    });
+    window.addEventListener("beforeunload", () => saveSnapshot(true));
     document.addEventListener("click", () => {
         if (popoverPinned) {
             popoverPinned = false;
@@ -1327,11 +3200,7 @@ async function main() {
     });
     lastTick = performance.now();
     requestAnimationFrame(animate);
-    setInterval(() => {
-        if (!state.isLocked) {
-            tickOnce();
-        }
-    }, 1000 / state.tickRate);
+    refreshTickLoop();
 }
 
 main().catch((error) => {

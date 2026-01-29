@@ -56,4 +56,16 @@ public class SkillSystemTests
         Assert.Contains("Bronze", progress.Unlocks);
         Assert.Contains("Iron", progress.Unlocks);
     }
+
+    [Fact]
+    public void SkillProgress_Rejects_Negative_Xp()
+    {
+        var registry = new SkillRegistry();
+        registry.Register(new SkillDefinition("alchemy", "Alchemy", "⚗️", 5, new Dictionary<int, string>()));
+
+        var curve = new LinearXpCurve(10, 5);
+        var system = new SkillSystem(registry, curve);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => system.AddXp("alchemy", -1));
+    }
 }

@@ -6,6 +6,51 @@ namespace IdleSdk.Core.Tests.Persistence;
 public class SqliteSnapshotStoreTests
 {
     [Fact]
+    public void Constructor_Rejects_Empty_ConnectionString()
+    {
+        Assert.Throws<ArgumentException>(() => new SqliteSnapshotStore(""));
+    }
+
+    [Fact]
+    public async Task GetLatestSnapshot_Rejects_Empty_ProfileId()
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"idle-sdk-{Guid.NewGuid():N}.db");
+        try
+        {
+            var store = new SqliteSnapshotStore($"Data Source={tempPath}");
+
+            await Assert.ThrowsAsync<ArgumentException>(() => store.GetLatestSnapshotAsync(" "));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SaveSnapshot_Rejects_Null_Snapshot()
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"idle-sdk-{Guid.NewGuid():N}.db");
+        try
+        {
+            var store = new SqliteSnapshotStore($"Data Source={tempPath}");
+
+            await Assert.ThrowsAsync<ArgumentNullException>(() => store.SaveSnapshotAsync(null!));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+    [Fact]
     public async Task SaveAndLoadSnapshot_RoundTrips()
     {
         var tempPath = Path.Combine(Path.GetTempPath(), $"idle-sdk-{Guid.NewGuid():N}.db");

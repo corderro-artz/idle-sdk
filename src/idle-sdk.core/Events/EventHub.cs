@@ -7,6 +7,8 @@ public sealed class EventHub
     private readonly ConcurrentDictionary<Type, List<Delegate>> _handlers = new();
     private readonly object _gate = new();
 
+    public Action<Exception, object?>? HandlerException { get; set; }
+
     public EventSubscription Subscribe<TEvent>(Action<TEvent> handler)
     {
         if (handler is null)
@@ -41,7 +43,14 @@ public sealed class EventHub
 
         foreach (var handler in snapshot)
         {
-            ((Action<TEvent>)handler)(eventData);
+            try
+            {
+                ((Action<TEvent>)handler)(eventData);
+            }
+            catch (Exception ex)
+            {
+                HandlerException?.Invoke(ex, eventData);
+            }
         }
     }
 

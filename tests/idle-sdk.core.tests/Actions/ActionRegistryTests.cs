@@ -19,6 +19,53 @@ public class ActionRegistryTests
     }
 
     [Fact]
+    public void Registry_Rejects_Duplicate_Definitions()
+    {
+        var registry = new ActionRegistry();
+        var definition = new ActionDefinition("train", "Train", TimeSpan.FromSeconds(1), TimeSpan.Zero, Array.Empty<string>());
+
+        registry.RegisterDefinition(definition);
+
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterDefinition(definition));
+    }
+
+    [Fact]
+    public void Registry_Rejects_Duplicate_Handlers()
+    {
+        var registry = new ActionRegistry();
+        var handler = new TestHandler("train");
+
+        registry.RegisterHandler(handler);
+
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterHandler(handler));
+    }
+
+    [Fact]
+    public void Registry_Throws_When_Definition_Missing()
+    {
+        var registry = new ActionRegistry();
+
+        Assert.Throws<KeyNotFoundException>(() => registry.GetDefinition("missing"));
+    }
+
+    [Fact]
+    public void Registry_Throws_When_Handler_Missing()
+    {
+        var registry = new ActionRegistry();
+
+        Assert.Throws<KeyNotFoundException>(() => registry.GetHandler("missing"));
+    }
+
+    [Fact]
+    public void Registry_Rejects_Null_Inputs()
+    {
+        var registry = new ActionRegistry();
+
+        Assert.Throws<ArgumentNullException>(() => registry.RegisterDefinition(null!));
+        Assert.Throws<ArgumentNullException>(() => registry.RegisterHandler(null!));
+    }
+
+    [Fact]
     public void Runner_Invokes_Handler()
     {
         var registry = new ActionRegistry();
@@ -83,6 +130,36 @@ public class ActionRegistryTests
         var result = restored.Step("test", new ActionContext(Guid.NewGuid(), start.AddSeconds(1)), TimeSpan.FromSeconds(1));
 
         Assert.False(result.Completed);
+    }
+
+    [Fact]
+    public void Runner_Rejects_Null_Context()
+    {
+        var registry = new ActionRegistry();
+        registry.RegisterDefinition(new ActionDefinition("idle", "Idle", TimeSpan.FromSeconds(1), TimeSpan.Zero, Array.Empty<string>()));
+        registry.RegisterHandler(new TestHandler("idle"));
+
+        var runner = new ActionRunner(registry);
+
+        Assert.Throws<ArgumentNullException>(() => runner.Step("idle", null!, TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void Runner_Rejects_Null_Modifier()
+    {
+        var registry = new ActionRegistry();
+        var runner = new ActionRunner(registry);
+
+        Assert.Throws<ArgumentNullException>(() => runner.RegisterModifier(null!));
+    }
+
+    [Fact]
+    public void Runner_Rejects_Null_Snapshot()
+    {
+        var registry = new ActionRegistry();
+        var runner = new ActionRunner(registry);
+
+        Assert.Throws<ArgumentNullException>(() => runner.RestoreCooldownSnapshot(null!));
     }
 
     private sealed class TestHandler : IActionHandler

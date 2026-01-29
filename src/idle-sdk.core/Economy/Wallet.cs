@@ -16,9 +16,9 @@ public sealed class Wallet
 
     public void Credit(string currencyId, long amount)
     {
-        if (amount < 0)
+        if (amount <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(amount), "Amount must be non-negative.");
+            throw new ArgumentOutOfRangeException(nameof(amount), "Amount must be positive.");
         }
 
         _balances[currencyId] = GetBalance(currencyId) + amount;
@@ -26,9 +26,9 @@ public sealed class Wallet
 
     public void Debit(string currencyId, long amount)
     {
-        if (amount < 0)
+        if (amount <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(amount), "Amount must be non-negative.");
+            throw new ArgumentOutOfRangeException(nameof(amount), "Amount must be positive.");
         }
 
         var balance = GetBalance(currencyId);

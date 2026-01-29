@@ -27,4 +27,15 @@ public class InventoryServiceTests
 
         Assert.Throws<InvalidOperationException>(() => inventory.RemoveItem("log", 1));
     }
+
+    [Fact]
+    public void InventoryService_Rejects_Missing_Item_Definition()
+    {
+        var registry = new ItemRegistry();
+        var service = new InventoryService(registry);
+        var profileId = Guid.NewGuid();
+
+        Assert.Throws<KeyNotFoundException>(() => service.AddItem(profileId, "missing", 1));
+        Assert.Throws<KeyNotFoundException>(() => service.RemoveItem(profileId, "missing", 1));
+    }
 }

@@ -45,3 +45,9 @@
 - 2026-01-25: Fixed combat AI target selection when no valid targets remain and mirrored demo logs to workspace logs/.
 - 2026-01-25: Generated engine API, schemas, and modding docs; updated README and docs index.
 - 2026-01-27: Delivered PixiJS web demo iteration with PWA cache updates, modernized UI, skill context ring effects, combo burst animations, and compact inventory badges with value popovers and history graph.
+- 2026-01-27: Updated web demo to default skill context focus, restore last active skill on return, add module/content pack explorers with editable module properties, and persist module state in debug overlay.
+- 2026-01-27: Polished web demo UI with debug panel expand/contract control, corrected ring particle orbit radius, softened ring tip glow animation, and tightened inventory/task spacing.
+- 2026-01-27: Refined web demo debug overlay expanded layout, softened ring tip bloom to remove halo ring, and ensured inventory grid renders one badge per item.
+- 2026-01-27: Added web demo theming module with built-in dark/light themes, Dracula theme via content pack, and a theme manager dialog; tightened global spacing for a cozier UI.
+- 2026-01-27: Gated debug/dev tooling behind DEV_MODE with local-only persistence, removed web Game View panel, and tightened sidebar spacing consistency.
+- 2026-01-28: Expanded theme catalog (6 built-in + 9 developer pack themes), added themable ring/glow variables, and implemented active skilling clicks with energy-based icon combo feedback.

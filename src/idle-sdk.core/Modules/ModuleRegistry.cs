@@ -11,6 +11,16 @@ public sealed class ModuleRegistry
             throw new ArgumentNullException(nameof(module));
         }
 
+        if (string.IsNullOrWhiteSpace(module.Name))
+        {
+            throw new ModuleRegistrationException("Module name must be provided.");
+        }
+
+        if (module.Dependencies is null)
+        {
+            throw new ModuleRegistrationException($"Module '{module.Name}' must define dependencies.");
+        }
+
         if (_modules.ContainsKey(module.Name))
         {
             throw new ModuleRegistrationException($"Module '{module.Name}' is already registered.");
@@ -62,6 +72,11 @@ public sealed class ModuleRegistry
 
         foreach (var dependency in module.Dependencies)
         {
+            if (string.IsNullOrWhiteSpace(dependency.Name))
+            {
+                throw new ModuleDependencyException($"Module '{module.Name}' has an invalid dependency name.");
+            }
+
             if (!_modules.TryGetValue(dependency.Name, out var dependencyModule))
             {
                 throw new ModuleDependencyException($"Missing dependency '{dependency.Name}' for module '{module.Name}'.");
