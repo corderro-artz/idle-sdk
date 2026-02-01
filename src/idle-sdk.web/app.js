@@ -26,13 +26,24 @@ const CURRENCY_DEFS = {
     credit: { name: "Credit", icon: "assets/icons/credit_dark.png" }
 };
 
+const DEFAULT_RENDER_FPS_CAP = 30;
+const DEFAULT_MODEL_VIEWER_SETTINGS = Object.freeze({
+    autoRotate: false,
+    rotateSensitivity: 0.01,
+    zoomMin: 0.7,
+    zoomMax: 1.6,
+    zoomSpeed: 0.9
+});
+
 const state = {
     tickRate: 1,
     tick: 0,
     isLocked: false,
     sandboxEnabled: true,
+    debugControlsEnabled: true,
     zoom: 1,
-    renderFpsCap: 0,
+    renderFpsCap: DEFAULT_RENDER_FPS_CAP,
+    modelViewer: { ...DEFAULT_MODEL_VIEWER_SETTINGS },
     skillXpMultiplier: 1,
     rewardMultiplier: 1,
     cashMultiplier: 1,
@@ -137,6 +148,22 @@ const ui = {
     debugUiUpdates: document.getElementById("debugUiUpdates"),
     debugOnline: document.getElementById("debugOnline"),
     debugOffline: document.getElementById("debugOffline"),
+    runtimePerf: document.getElementById("runtimePerf"),
+    runtimeSession: document.getElementById("runtimeSession"),
+    runtimeHost: document.getElementById("runtimeHost"),
+    runtimeProtocol: document.getElementById("runtimeProtocol"),
+    runtimeDevMode: document.getElementById("runtimeDevMode"),
+    runtimeRenderer: document.getElementById("runtimeRenderer"),
+    runtimeEngine: document.getElementById("runtimeEngine"),
+    runtimeStorage: document.getElementById("runtimeStorage"),
+    runtimeErrors: document.getElementById("runtimeErrors"),
+    runtimeGraph: document.getElementById("runtimeGraph"),
+    runtimeUptime: document.getElementById("runtimeUptime"),
+    runtimeSaved: document.getElementById("runtimeSaved"),
+    tickBtn: document.getElementById("tickBtn"),
+    offlineBtn: document.getElementById("offlineBtn"),
+    saveBtn: document.getElementById("saveBtn"),
+    loadBtn: document.getElementById("loadBtn"),
     pinnedInspector: document.getElementById("pinnedInspector"),
     walletInspector: document.getElementById("walletInspector"),
     inventoryInspector: document.getElementById("inventoryInspector"),
@@ -148,6 +175,11 @@ const ui = {
     clearModulesBtn: document.getElementById("clearModulesBtn"),
     debugOverlayPanel: document.querySelector(".overlay-panel"),
     debugSizeToggle: document.getElementById("toggleDebugSize"),
+    debugControlsToggle: document.getElementById("debugControlsToggle"),
+    freezeTicksToggle: document.getElementById("freezeTicksToggle"),
+    tickBatchInput: document.getElementById("tickBatchInput"),
+    tickBatchBtn: document.getElementById("tickBatchBtn"),
+    tickBatchTime: document.getElementById("tickBatchTime"),
     themeDialog: document.getElementById("themeDialog"),
     themeList: document.getElementById("themeList"),
     themeJson: document.getElementById("themeJson"),
@@ -162,9 +194,23 @@ const ui = {
     copyErrorsBtn: document.getElementById("copyErrors"),
     clearErrorsBtn: document.getElementById("clearErrors"),
     closeErrorsBtn: document.getElementById("closeErrors"),
+    modelViewerDialog: document.getElementById("modelViewerDialog"),
+    modelViewerViewport: document.getElementById("modelViewerViewport"),
+    modelViewerStatus: document.getElementById("modelViewerStatus"),
+    modelViewerTitle: document.getElementById("modelViewerTitle"),
+    modelViewerCloseBtn: document.getElementById("modelViewerClose"),
+    modelViewerResetBtn: document.getElementById("modelViewerReset"),
+    modelViewerRotateLeft: document.getElementById("modelViewerRotateLeft"),
+    modelViewerRotateRight: document.getElementById("modelViewerRotateRight"),
+    modelViewerAutoRotate: document.getElementById("modelViewerAutoRotate"),
+    modelViewerZoom: document.getElementById("modelViewerZoom"),
+    modelViewerZoomIn: document.getElementById("modelViewerZoomIn"),
+    modelViewerZoomOut: document.getElementById("modelViewerZoomOut"),
+    modelViewerZoomValue: document.getElementById("modelViewerZoomValue"),
     modelUploadInput: document.getElementById("modelUploadInput"),
     modelClearBtn: document.getElementById("modelClearBtn"),
     modelUploadName: document.getElementById("modelUploadName"),
+    modelExpandBtn: document.getElementById("modelExpandBtn"),
     zoomSlider: document.getElementById("zoomSlider"),
     zoomValue: document.getElementById("zoomValue"),
     comboMeter: document.getElementById("comboMeter"),
@@ -199,6 +245,7 @@ let threeLoaderPromise = null;
 let threeModule = null;
 let gltfLoaderCtor = null;
 let objLoaderCtor = null;
+let orbitControlsCtor = null;
 let modelUploadUrl = null;
 const modelTypeOverrides = new Map();
 const rawConsoleWarn = console.warn.bind(console);
@@ -210,6 +257,10 @@ let telemetryElapsed = 0;
 const tickSamples = [];
 const pinnedProperties = new Set();
 const pinnedUi = new Map();
+const runtimeFpsSamples = [];
+let runtimeGraphCtx = null;
+const sessionStartedAt = Date.now();
+let lastSavedAt = null;
 
 const moduleState = {
     simulation: { enabled: true },
@@ -219,6 +270,15 @@ const moduleState = {
     renderer: { enabled: true },
     renderer3d: { enabled: true }
 };
+
+const DEFAULT_MODULE_STATE = Object.freeze({
+    simulation: { enabled: true },
+    skills: { enabled: true },
+    inventory: { enabled: true },
+    economy: { enabled: true },
+    renderer: { enabled: true },
+    renderer3d: { enabled: true }
+});
 
 const moduleDefinitions = [
     {
@@ -471,7 +531,70 @@ const moduleDefinitions = [
         name: "Renderer (3D)",
         version: "1.0.0",
         description: "Three.js model previews and debug viewport.",
-        properties: []
+        properties: [
+            {
+                id: "autoRotate",
+                label: "Auto Rotate",
+                type: "boolean",
+                get: () => state.modelViewer.autoRotate,
+                set: (value) => {
+                    state.modelViewer.autoRotate = Boolean(value);
+                    applyModelViewerSettings();
+                }
+            },
+            {
+                id: "rotateSensitivity",
+                label: "Rotate Sensitivity",
+                type: "number",
+                min: 0.002,
+                max: 0.05,
+                step: 0.002,
+                get: () => state.modelViewer.rotateSensitivity,
+                set: (value) => {
+                    state.modelViewer.rotateSensitivity = clamp(Number(value) || 0.01, 0.002, 0.05);
+                    applyModelViewerSettings();
+                }
+            },
+            {
+                id: "zoomMin",
+                label: "Zoom Min",
+                type: "number",
+                min: 0.4,
+                max: 1,
+                step: 0.05,
+                get: () => state.modelViewer.zoomMin,
+                set: (value) => {
+                    state.modelViewer.zoomMin = clamp(Number(value) || 0.7, 0.4, 1);
+                    applyModelViewerSettings();
+                }
+            },
+            {
+                id: "zoomMax",
+                label: "Zoom Max",
+                type: "number",
+                min: 1,
+                max: 3,
+                step: 0.05,
+                get: () => state.modelViewer.zoomMax,
+                set: (value) => {
+                    state.modelViewer.zoomMax = clamp(Number(value) || 1.6, 1, 3);
+                    applyModelViewerSettings();
+                }
+            },
+            {
+                id: "zoomSpeed",
+                label: "Zoom Speed",
+                type: "number",
+                min: 0.2,
+                max: 2,
+                step: 0.05,
+                get: () => state.modelViewer.zoomSpeed,
+                set: (value) => {
+                    state.modelViewer.zoomSpeed = clamp(Number(value) || 0.9, 0.2, 2);
+                    applyModelViewerSettings();
+                }
+            }
+        ]
     }
 ];
 
@@ -687,17 +810,43 @@ function persistModuleState() {
             clickEnergyLevelUpBoost: state.clickEnergyLevelUpBoost,
             clickEnergyLevelUpPerLevel: state.clickEnergyLevelUpPerLevel,
             ringParticlesEnabled: state.ringParticlesEnabled,
+            debugControlsEnabled: state.debugControlsEnabled,
             zoom: state.zoom,
-            renderFpsCap: state.renderFpsCap
+            renderFpsCap: state.renderFpsCap,
+            modelViewer: {
+                autoRotate: state.modelViewer.autoRotate,
+                rotateSensitivity: state.modelViewer.rotateSensitivity,
+                zoomMin: state.modelViewer.zoomMin,
+                zoomMax: state.modelViewer.zoomMax,
+                zoomSpeed: state.modelViewer.zoomSpeed
+            }
         },
         externalModules
     };
     localStorage.setItem(MODULE_STORAGE_KEY, JSON.stringify(snapshot));
 }
 
+function resetModulePreferencesToDefaults() {
+    Object.keys(moduleState).forEach((key) => delete moduleState[key]);
+    Object.entries(DEFAULT_MODULE_STATE).forEach(([key, value]) => {
+        moduleState[key] = { enabled: value.enabled !== false };
+    });
+    state.renderFpsCap = DEFAULT_RENDER_FPS_CAP;
+    state.modelViewer = { ...DEFAULT_MODEL_VIEWER_SETTINGS };
+    state.debugControlsEnabled = true;
+    externalModules.length = 0;
+    pinnedProperties.clear();
+    getDefaultPinnedProperties().forEach((id) => pinnedProperties.add(id));
+    savePinnedProperties();
+    localStorage.removeItem(MODULE_STORAGE_KEY);
+    localStorage.removeItem(PINNED_STORAGE_KEY);
+}
+
 function getDefaultPinnedProperties() {
     return [
         "telemetry.fps",
+        "telemetry.tickRate",
+        "telemetry.errors",
         "module:simulation:tickRate",
         "wallet.cash",
         "wallet.credit"
@@ -732,6 +881,7 @@ function isPinned(id) {
 }
 
 function togglePin(id) {
+    if (!state.debugControlsEnabled) return;
     if (pinnedProperties.has(id)) {
         pinnedProperties.delete(id);
     } else {
@@ -749,6 +899,7 @@ function createPinButton(id) {
     button.type = "button";
     button.textContent = isPinned(id) ? "★" : "☆";
     button.title = isPinned(id) ? "Unpin from Overview" : "Pin to Overview";
+    button.disabled = !state.debugControlsEnabled;
     button.onclick = () => togglePin(id);
     return button;
 }
@@ -760,6 +911,46 @@ function getTelemetryDescriptor(id) {
             label: "FPS",
             type: "readonly",
             get: () => currentFps
+        };
+    }
+    if (id === "telemetry.tickRate") {
+        return {
+            id,
+            label: "Tick Rate",
+            type: "readonly",
+            get: () => Number.isFinite(tickRateObserved) ? tickRateObserved.toFixed(2) : "--"
+        };
+    }
+    if (id === "telemetry.uiUpdates") {
+        return {
+            id,
+            label: "UI Updates",
+            type: "readonly",
+            get: () => lastUiUpdateCount
+        };
+    }
+    if (id === "telemetry.errors") {
+        return {
+            id,
+            label: "Errors",
+            type: "readonly",
+            get: () => errorLog.length
+        };
+    }
+    if (id === "telemetry.uptime") {
+        return {
+            id,
+            label: "Uptime",
+            type: "readonly",
+            get: () => formatDuration(Date.now() - sessionStartedAt)
+        };
+    }
+    if (id === "telemetry.renderCap") {
+        return {
+            id,
+            label: "FPS Cap",
+            type: "readonly",
+            get: () => state.renderFpsCap || "Off"
         };
     }
     return null;
@@ -945,6 +1136,177 @@ function updatePinnedValues() {
     });
 }
 
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    let value = bytes;
+    let index = 0;
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index += 1;
+    }
+    return `${value.toFixed(value < 10 ? 2 : 1)} ${units[index]}`;
+}
+
+function formatDuration(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return "--";
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+    }
+    if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+}
+
+function formatTimestamp(ts) {
+    if (!ts) return "Never";
+    return new Date(ts).toLocaleTimeString();
+}
+
+function renderRuntimeRow(label, value, badge) {
+    const row = document.createElement("div");
+    row.className = "runtime-row";
+    const labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    const valueWrap = document.createElement("span");
+    valueWrap.className = "runtime-value";
+    const valueEl = document.createElement("strong");
+    valueEl.textContent = value;
+    valueWrap.appendChild(valueEl);
+    if (badge) {
+        const badgeEl = document.createElement("span");
+        badgeEl.className = `runtime-badge runtime-badge-${badge.tone ?? "muted"}`;
+        badgeEl.textContent = badge.text;
+        valueWrap.appendChild(badgeEl);
+    }
+    row.appendChild(labelEl);
+    row.appendChild(valueWrap);
+    return row;
+}
+
+function getLocalStorageUsage() {
+    try {
+        let total = 0;
+        for (let i = 0; i < localStorage.length; i += 1) {
+            const key = localStorage.key(i);
+            if (!key) continue;
+            const value = localStorage.getItem(key) ?? "";
+            total += key.length + value.length;
+        }
+        return total * 2;
+    } catch {
+        return 0;
+    }
+}
+
+function updateRuntimeDiagnostics() {
+    if (ui.runtimeHost) {
+        ui.runtimeHost.textContent = `Host: ${location.hostname || "local"}`;
+    }
+    if (ui.runtimeProtocol) {
+        ui.runtimeProtocol.textContent = `Protocol: ${location.protocol.replace(":", "")}`;
+    }
+    if (ui.runtimeDevMode) {
+        ui.runtimeDevMode.textContent = `Dev Mode: ${DEV_MODE ? "Enabled" : "Disabled"}`;
+    }
+    if (ui.runtimeUptime) {
+        ui.runtimeUptime.textContent = `Uptime: ${formatDuration(Date.now() - sessionStartedAt)}`;
+    }
+    if (ui.runtimeSaved) {
+        ui.runtimeSaved.textContent = `Last save: ${formatTimestamp(lastSavedAt)}`;
+    }
+    if (ui.runtimeRenderer) {
+        ui.runtimeRenderer.innerHTML = "";
+        const rendererEnabled = isModuleEnabled("renderer");
+        ui.runtimeRenderer.appendChild(renderRuntimeRow(
+            "Renderer",
+            rendererEnabled ? "Enabled" : "Disabled",
+            rendererEnabled ? null : { text: "Module off", tone: "muted" }
+        ));
+        const previewEnabled = isModuleEnabled("renderer3d");
+        ui.runtimeRenderer.appendChild(renderRuntimeRow(
+            "3D Preview",
+            previewEnabled ? "Enabled" : "Disabled",
+            previewEnabled ? null : { text: "Module off", tone: "muted" }
+        ));
+        const threeStatus = window.THREE ? "Loaded" : previewEnabled ? "Loading" : "Disabled";
+        const threeBadge = window.THREE ? null : previewEnabled ? { text: "Pending", tone: "warn" } : { text: "N/A", tone: "muted" };
+        ui.runtimeRenderer.appendChild(renderRuntimeRow("Three.js", threeStatus, threeBadge));
+        ui.runtimeRenderer.appendChild(renderRuntimeRow("FPS Cap", state.renderFpsCap || "Off"));
+    }
+    if (ui.runtimeEngine) {
+        ui.runtimeEngine.innerHTML = "";
+        ui.runtimeEngine.appendChild(renderRuntimeRow("Modules", moduleDefinitions.length));
+        ui.runtimeEngine.appendChild(renderRuntimeRow("External Modules", externalModules.length));
+        ui.runtimeEngine.appendChild(renderRuntimeRow("Content Packs", state.contentPacks.length));
+    }
+    if (ui.runtimeStorage) {
+        ui.runtimeStorage.innerHTML = "";
+        ui.runtimeStorage.appendChild(renderRuntimeRow("LocalStorage", formatBytes(getLocalStorageUsage())));
+        if (performance?.memory?.usedJSHeapSize) {
+            const used = performance.memory.usedJSHeapSize;
+            const total = performance.memory.totalJSHeapSize;
+            ui.runtimeStorage.appendChild(renderRuntimeRow("JS Heap", `${formatBytes(used)} / ${formatBytes(total)}`));
+        } else {
+            ui.runtimeStorage.appendChild(renderRuntimeRow("JS Heap", "Unavailable", { text: "N/A", tone: "muted" }));
+        }
+    }
+    if (ui.runtimeErrors) {
+        const lastError = errorLog[errorLog.length - 1];
+        ui.runtimeErrors.innerHTML = "";
+        const hasErrors = errorLog.length > 0;
+        ui.runtimeErrors.appendChild(renderRuntimeRow("Count", errorLog.length, hasErrors ? null : { text: "None", tone: "success" }));
+        ui.runtimeErrors.appendChild(renderRuntimeRow("Last", lastError?.time ?? "--", hasErrors ? null : { text: "N/A", tone: "muted" }));
+        ui.runtimeErrors.appendChild(renderRuntimeRow("Level", lastError?.level?.toUpperCase?.() ?? "--", hasErrors ? null : { text: "N/A", tone: "muted" }));
+        ui.runtimeErrors.appendChild(renderRuntimeRow("Message", lastError?.message ?? "--", hasErrors ? null : { text: "N/A", tone: "muted" }));
+    }
+}
+
+function setupRuntimeGraph() {
+    if (!ui.runtimeGraph) return;
+    runtimeGraphCtx = ui.runtimeGraph.getContext("2d");
+    runtimeFpsSamples.length = 0;
+}
+
+function recordRuntimeFpsSample() {
+    runtimeFpsSamples.push(Math.max(0, currentFps));
+    const maxSamples = 80;
+    if (runtimeFpsSamples.length > maxSamples) {
+        runtimeFpsSamples.splice(0, runtimeFpsSamples.length - maxSamples);
+    }
+}
+
+function drawRuntimeGraph() {
+    if (!runtimeGraphCtx || !ui.runtimeGraph) return;
+    const ctx = runtimeGraphCtx;
+    const width = ui.runtimeGraph.width;
+    const height = ui.runtimeGraph.height;
+    ctx.clearRect(0, 0, width, height);
+    if (runtimeFpsSamples.length < 2) return;
+
+    const max = Math.max(...runtimeFpsSamples, 1);
+    const min = Math.min(...runtimeFpsSamples, 0);
+    const span = Math.max(1, max - min);
+    ctx.strokeStyle = "rgba(96, 165, 250, 0.8)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    runtimeFpsSamples.forEach((value, index) => {
+        const x = (index / (runtimeFpsSamples.length - 1)) * (width - 8) + 4;
+        const y = height - 6 - ((value - min) / span) * (height - 12);
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+    ctx.stroke();
+}
+
 function updateDebugTelemetry() {
     if (ui.debugFps) {
         ui.debugFps.textContent = `FPS: ${Math.round(currentFps)}`;
@@ -953,6 +1315,11 @@ function updateDebugTelemetry() {
         const observed = Number.isFinite(tickRateObserved) ? tickRateObserved : 0;
         ui.debugTickRate.textContent = `Tick rate: ${observed.toFixed(2)}/s • Target ${state.tickRate}/s • Tick ${state.tick}`;
     }
+    if (ui.debugUiUpdates) {
+        ui.debugUiUpdates.textContent = `UI updates/frame: ${lastUiUpdateCount}`;
+    }
+    updateRuntimeDiagnostics();
+    drawRuntimeGraph();
     updatePinnedValues();
 }
 
@@ -1141,7 +1508,12 @@ async function tryImportModule(sources, label) {
 }
 
 function ensureThreeJs() {
-    if (window.THREE && (window.GLTFLoader || window.THREE.GLTFLoader) && (window.OBJLoader || window.THREE.OBJLoader)) {
+    if (
+        window.THREE
+        && (window.GLTFLoader || window.THREE.GLTFLoader)
+        && (window.OBJLoader || window.THREE.OBJLoader)
+        && (window.OrbitControls || window.THREE?.OrbitControls || orbitControlsCtor)
+    ) {
         return Promise.resolve(true);
     }
     if (threeLoaderPromise) return threeLoaderPromise;
@@ -1192,6 +1564,28 @@ function ensureThreeJs() {
                 if (objModule?.OBJLoader) {
                     objLoaderCtor = objModule.OBJLoader;
                     window.OBJLoader = objModule.OBJLoader;
+                }
+            }
+            if (!window.OrbitControls && !window.THREE?.OrbitControls && !orbitControlsCtor) {
+                const controlSources = [
+                    "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js",
+                    "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js"
+                ];
+                const controlsModule = await tryImportModule(controlSources, "orbit-controls");
+                if (controlsModule?.OrbitControls) {
+                    orbitControlsCtor = controlsModule.OrbitControls;
+                    window.OrbitControls = controlsModule.OrbitControls;
+                }
+            }
+            if (!window.OrbitControls && !window.THREE?.OrbitControls && !orbitControlsCtor) {
+                const controlScripts = [
+                    "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js",
+                    "https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js"
+                ];
+                await tryLoadScripts(controlScripts, "orbit-controls-script");
+                if (window.THREE?.OrbitControls) {
+                    orbitControlsCtor = window.THREE.OrbitControls;
+                    window.OrbitControls = window.THREE.OrbitControls;
                 }
             }
             return Boolean(window.THREE);
@@ -1275,11 +1669,39 @@ function restoreModuleState() {
             if (typeof snapshot.values.ringParticlesEnabled === "boolean") {
                 state.ringParticlesEnabled = snapshot.values.ringParticlesEnabled;
             }
+            if (typeof snapshot.values.debugControlsEnabled === "boolean") {
+                state.debugControlsEnabled = snapshot.values.debugControlsEnabled;
+            } else {
+                state.debugControlsEnabled = true;
+                persistModuleState();
+            }
             if (Number.isFinite(snapshot.values.zoom)) {
                 state.zoom = snapshot.values.zoom;
             }
             if (Number.isFinite(snapshot.values.renderFpsCap)) {
                 state.renderFpsCap = snapshot.values.renderFpsCap;
+            }
+            if (state.renderFpsCap === 0) {
+                state.renderFpsCap = DEFAULT_RENDER_FPS_CAP;
+                persistModuleState();
+            }
+            if (snapshot.values.modelViewer && typeof snapshot.values.modelViewer === "object") {
+                const viewer = snapshot.values.modelViewer;
+                if (typeof viewer.autoRotate === "boolean") {
+                    state.modelViewer.autoRotate = viewer.autoRotate;
+                }
+                if (Number.isFinite(viewer.rotateSensitivity)) {
+                    state.modelViewer.rotateSensitivity = viewer.rotateSensitivity;
+                }
+                if (Number.isFinite(viewer.zoomMin)) {
+                    state.modelViewer.zoomMin = viewer.zoomMin;
+                }
+                if (Number.isFinite(viewer.zoomMax)) {
+                    state.modelViewer.zoomMax = viewer.zoomMax;
+                }
+                if (Number.isFinite(viewer.zoomSpeed)) {
+                    state.modelViewer.zoomSpeed = viewer.zoomSpeed;
+                }
             }
         }
         if (Array.isArray(snapshot?.externalModules)) {
@@ -1314,6 +1736,55 @@ function applyZoom(value) {
         ui.zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
     }
     persistModuleState();
+}
+
+function normalizeModelViewerSettings() {
+    const min = clamp(Number(state.modelViewer.zoomMin) || 0.7, 0.4, 1);
+    const max = clamp(Number(state.modelViewer.zoomMax) || 1.6, 1, 3);
+    if (min >= max) {
+        state.modelViewer.zoomMin = Math.max(0.4, Math.min(min, max - 0.1));
+        state.modelViewer.zoomMax = Math.min(3, Math.max(max, state.modelViewer.zoomMin + 0.1));
+    } else {
+        state.modelViewer.zoomMin = min;
+        state.modelViewer.zoomMax = max;
+    }
+    state.modelViewer.rotateSensitivity = clamp(Number(state.modelViewer.rotateSensitivity) || 0.01, 0.002, 0.05);
+    state.modelViewer.zoomSpeed = clamp(Number(state.modelViewer.zoomSpeed) || 0.9, 0.2, 2);
+}
+
+function applyModelViewerSettings() {
+    normalizeModelViewerSettings();
+    modelRenderer?.viewer?.applySettings?.(state.modelViewer);
+    persistModuleState();
+}
+
+function formatTickDuration(ticks, tickRate) {
+    const safeTicks = Math.max(0, Number(ticks) || 0);
+    const rate = Math.max(0.001, Number(tickRate) || 1);
+    const totalSeconds = Math.floor(safeTicks / rate);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+function updateTickBatchPreview() {
+    if (!ui.tickBatchTime) return;
+    ui.tickBatchTime.textContent = formatTickDuration(ui.tickBatchInput?.value ?? 0, state.tickRate);
+}
+
+function setDebugControlsEnabled(enabled) {
+    state.debugControlsEnabled = Boolean(enabled);
+    if (ui.debugOverlayPanel) {
+        ui.debugOverlayPanel.classList.toggle("controls-locked", !state.debugControlsEnabled);
+    }
+    persistModuleState();
+    refreshToggleButtons();
+    renderModules();
+    renderContentPacks();
+    renderPinnedProperties();
 }
 
 const ThemeManager = {
@@ -2291,15 +2762,22 @@ function tickOnce(options = {}) {
 
 function runOffline(seconds) {
     lastOfflineSeconds = seconds;
-    ui.debugOnline.textContent = "Offline (reconciling)";
-    ui.debugOffline.textContent = `Last offline: ${seconds}s`;
+    if (ui.debugOnline) {
+        ui.debugOnline.textContent = "Offline (reconciling)";
+    }
+    if (ui.debugOffline) {
+        ui.debugOffline.textContent = `Last offline: ${seconds}s`;
+    }
     for (let i = 0; i < seconds; i++) {
         tickOnce({ recordSample: false });
     }
-    ui.debugOnline.textContent = "Online";
+    if (ui.debugOnline) {
+        ui.debugOnline.textContent = "Online";
+    }
 }
 
-function saveSnapshot(silent = false) {
+function saveSnapshot(silent = false, bypassDebugGuard = false) {
+    if (!bypassDebugGuard && !state.debugControlsEnabled) return;
     const snapshot = {
         tick: state.tick,
         wallet: state.wallet,
@@ -2313,27 +2791,18 @@ function saveSnapshot(silent = false) {
         })),
         selectedSkillId,
         lastActiveSkillId: state.lastActiveSkillId,
-        moduleState: {
-            modules: moduleState,
-            values: {
-                tickRate: state.tickRate,
-                skillXpMultiplier: state.skillXpMultiplier,
-                rewardMultiplier: state.rewardMultiplier,
-                cashMultiplier: state.cashMultiplier,
-                ringParticlesEnabled: state.ringParticlesEnabled,
-                zoom: state.zoom
-            }
-        },
         saveStatus: "Saved"
     };
     persistSnapshot(snapshot);
+    lastSavedAt = Date.now();
     if (!silent) {
         state.saveStatus = "Saved";
         updateLists();
     }
 }
 
-function loadSnapshot() {
+function loadSnapshot(bypassDebugGuard = false) {
+    if (!bypassDebugGuard && !state.debugControlsEnabled) return;
     const raw = loadSnapshotFromStorage();
     if (!raw) {
         state.saveStatus = "No snapshot";
@@ -2373,30 +2842,6 @@ function loadSnapshot() {
         });
     }
 
-    if (snapshot?.moduleState) {
-        Object.entries(snapshot.moduleState.modules ?? {}).forEach(([key, value]) => {
-            moduleState[key] = { enabled: value?.enabled !== false };
-        });
-        const values = snapshot.moduleState.values ?? {};
-        if (Number.isFinite(values.tickRate)) {
-            state.tickRate = values.tickRate;
-        }
-        if (Number.isFinite(values.skillXpMultiplier)) {
-            state.skillXpMultiplier = values.skillXpMultiplier;
-        }
-        if (Number.isFinite(values.rewardMultiplier)) {
-            state.rewardMultiplier = values.rewardMultiplier;
-        }
-        if (Number.isFinite(values.cashMultiplier)) {
-            state.cashMultiplier = values.cashMultiplier;
-        }
-        if (typeof values.ringParticlesEnabled === "boolean") {
-            state.ringParticlesEnabled = values.ringParticlesEnabled;
-        }
-        if (Number.isFinite(values.zoom)) {
-            state.zoom = values.zoom;
-        }
-    }
     if (snapshot?.selectedSkillId) {
         selectedSkillId = snapshot.selectedSkillId;
     }
@@ -2417,6 +2862,8 @@ function loadSnapshot() {
 }
 
 function resetDevAccount() {
+    const locked = state.isLocked;
+    const sandbox = state.sandboxEnabled;
     state.tick = 0;
     state.wallet = { cash: 0, credit: 0 };
     state.inventorySlots = [];
@@ -2438,8 +2885,15 @@ function resetDevAccount() {
     state.saveStatus = "Reset";
     state.lastActiveSkillId = null;
     selectedSkillId = state.skills[0]?.id ?? "gambling";
+    resetModulePreferencesToDefaults();
+    applyModelViewerSettings();
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(THEME_STORAGE_KEY);
+    ThemeManager.restore();
+    state.isLocked = locked;
+    state.sandboxEnabled = sandbox;
+    refreshToggleButtons();
     updateLists();
-    saveSnapshot(true);
 }
 
 function updateLists() {
@@ -2571,6 +3025,7 @@ function updateInspectors() {
 function renderContentPacks() {
     if (!ui.contentPackInspector) return;
     ui.contentPackInspector.innerHTML = "";
+    const controlsDisabled = !state.debugControlsEnabled;
     state.contentPacks.forEach((pack) => {
         const card = document.createElement("div");
         card.className = "module-card";
@@ -2619,7 +3074,9 @@ function renderContentPacks() {
                 const input = document.createElement("input");
                 input.type = "checkbox";
                 input.checked = Boolean(prop.get ? prop.get() : prop.value);
+                input.disabled = controlsDisabled;
                 input.onchange = () => {
+                    if (controlsDisabled) return;
                     if (prop.set) {
                         prop.set(input.checked);
                     } else {
@@ -2637,7 +3094,9 @@ function renderContentPacks() {
                 input.max = prop.max ?? 999;
                 input.step = prop.step ?? 1;
                 input.value = prop.get ? prop.get() : prop.value ?? 0;
+                input.disabled = controlsDisabled;
                 input.onchange = () => {
+                    if (controlsDisabled) return;
                     const next = Number(input.value);
                     if (prop.set) {
                         prop.set(next);
@@ -2666,6 +3125,7 @@ function renderContentPacks() {
 function renderModules() {
     if (!ui.moduleInspector) return;
     ui.moduleInspector.innerHTML = "";
+    const controlsDisabled = !state.debugControlsEnabled;
 
     const allModules = [...moduleDefinitions, ...externalModules];
     allModules.forEach((module) => {
@@ -2686,7 +3146,9 @@ function renderModules() {
         toggle.className = "button ghost";
         const enabled = isExternal ? module.enabled !== false : isModuleEnabled(module.id);
         toggle.textContent = enabled ? "Enabled" : "Disabled";
+        toggle.disabled = controlsDisabled;
         toggle.onclick = () => {
+            if (controlsDisabled) return;
             if (isExternal) {
                 module.enabled = !(module.enabled !== false);
             } else {
@@ -2713,7 +3175,9 @@ function renderModules() {
                 const input = document.createElement("input");
                 input.type = "checkbox";
                 input.checked = Boolean(prop.get ? prop.get() : prop.value);
+                input.disabled = controlsDisabled;
                 input.onchange = () => {
+                    if (controlsDisabled) return;
                     if (prop.set) {
                         prop.set(input.checked);
                     } else {
@@ -2732,7 +3196,9 @@ function renderModules() {
                 input.max = prop.max ?? 999;
                 input.step = prop.step ?? 1;
                 input.value = prop.get ? prop.get() : prop.value ?? 0;
+                input.disabled = controlsDisabled;
                 input.onchange = () => {
+                    if (controlsDisabled) return;
                     const next = Number(input.value);
                     if (prop.set) {
                         prop.set(next);
@@ -2834,6 +3300,7 @@ function animate(now) {
     if (fpsElapsed >= 1) {
         currentFps = fpsFrames / fpsElapsed;
         updateDebugTelemetry();
+        recordRuntimeFpsSample();
         fpsFrames = 0;
         fpsElapsed = 0;
     }
@@ -2841,6 +3308,7 @@ function animate(now) {
     if (telemetryElapsed >= 0.5) {
         telemetryElapsed = 0;
         updateDebugTelemetry();
+        recordRuntimeFpsSample();
     }
     updateSkillBars(delta);
     if (modelRenderer && isModuleEnabled("renderer3d")) {
@@ -2920,9 +3388,418 @@ function refreshModelPreviews() {
     modelRenderer.refreshSizes();
 }
 
+class ExpandedModelViewerDialog {
+    constructor(renderer) {
+        this.rendererHost = renderer;
+        this.dialog = ui.modelViewerDialog;
+        this.viewport = ui.modelViewerViewport;
+        this.status = ui.modelViewerStatus;
+        this.title = ui.modelViewerTitle;
+        this.closeBtn = ui.modelViewerCloseBtn;
+        this.resetBtn = ui.modelViewerResetBtn;
+        this.rotateLeftBtn = ui.modelViewerRotateLeft;
+        this.rotateRightBtn = ui.modelViewerRotateRight;
+        this.autoRotateBtn = ui.modelViewerAutoRotate;
+        this.zoomSlider = ui.modelViewerZoom;
+        this.zoomInBtn = ui.modelViewerZoomIn;
+        this.zoomOutBtn = ui.modelViewerZoomOut;
+        this.zoomValue = ui.modelViewerZoomValue;
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.controls = null;
+        this.root = null;
+        this.resizeObserver = null;
+        this.active = false;
+        this.requestId = 0;
+        this.zoomBaseDistance = null;
+        this.zoomFactor = 1;
+        this.autoRotateEnabled = state.modelViewer.autoRotate;
+        this.renderLoopId = 0;
+        this.manualControls = false;
+        this.dragActive = false;
+        this.dragPointerId = null;
+        this.lastDragPosition = null;
+        this.onPointerMove = null;
+        this.onPointerUp = null;
+
+        if (this.closeBtn) {
+            this.closeBtn.addEventListener("click", () => this.close());
+        }
+        if (this.resetBtn) {
+            this.resetBtn.addEventListener("click", () => this.resetView());
+        }
+        if (this.rotateLeftBtn) {
+            this.rotateLeftBtn.addEventListener("click", () => this.rotateBy(-0.2));
+        }
+        if (this.rotateRightBtn) {
+            this.rotateRightBtn.addEventListener("click", () => this.rotateBy(0.2));
+        }
+        if (this.autoRotateBtn) {
+            this.autoRotateBtn.addEventListener("click", () => this.toggleAutoRotate());
+        }
+        if (this.zoomSlider) {
+            this.zoomSlider.addEventListener("input", () => {
+                this.setZoomFactor(Number(this.zoomSlider.value || 1));
+            });
+        }
+        if (this.zoomInBtn) {
+            this.zoomInBtn.addEventListener("click", () => this.nudgeZoom(0.1));
+        }
+        if (this.zoomOutBtn) {
+            this.zoomOutBtn.addEventListener("click", () => this.nudgeZoom(-0.1));
+        }
+    }
+
+    async open(options) {
+        if (!this.dialog || !this.viewport) return;
+        this.dialog.classList.remove("hidden");
+        this.dialog.setAttribute("aria-hidden", "false");
+        this.active = true;
+        if (this.title) {
+            this.title.textContent = options?.label || "3D Model Viewer";
+        }
+
+        const requestId = ++this.requestId;
+        const ready = await ensureThreeJs();
+        if (!ready || !window.THREE) {
+            this.setStatus("Three.js not loaded.", options?.fallback);
+            return;
+        }
+        const OrbitControlsCtor = orbitControlsCtor ?? window.THREE?.OrbitControls ?? window.OrbitControls;
+        if (!OrbitControlsCtor) {
+            this.manualControls = true;
+            this.setStatus("Orbit controls unavailable. Basic controls enabled.", options?.fallback);
+        }
+        this.ensureRenderer(OrbitControlsCtor ?? null);
+        this.applySettings(state.modelViewer);
+        this.startRenderLoop();
+        const url = options?.url;
+        if (!url) {
+            this.setStatus("Load a model to use the expanded viewer.", options?.fallback);
+            return;
+        }
+        await this.loadModel(options, requestId);
+    }
+
+    ensureRenderer(OrbitControlsCtor) {
+        if (!this.viewport || this.renderer) return;
+        this.renderer = new window.THREE.WebGLRenderer({ alpha: true, antialias: true });
+        this.renderer.setClearColor(0x000000, 0);
+        this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+        if (window.THREE.SRGBColorSpace) {
+            this.renderer.outputColorSpace = window.THREE.SRGBColorSpace;
+        }
+        this.renderer.toneMapping = window.THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.05;
+        this.scene = new window.THREE.Scene();
+        this.camera = new window.THREE.PerspectiveCamera(45, 1, 0.1, 200);
+        this.camera.position.set(0, 0.4, 7);
+
+        const ambient = new window.THREE.AmbientLight(0xffffff, 0.85);
+        const hemi = new window.THREE.HemisphereLight(0xffffff, 0x223344, 0.6);
+        const key = new window.THREE.DirectionalLight(0xffffff, 0.95);
+        key.position.set(4, 5, 7);
+        this.scene.add(ambient, hemi, key);
+
+        this.viewport.innerHTML = "";
+        this.viewport.appendChild(this.renderer.domElement);
+        this.renderer.domElement.style.touchAction = "none";
+        if (this.status) {
+            this.viewport.appendChild(this.status);
+        }
+
+        if (OrbitControlsCtor) {
+            this.controls = new OrbitControlsCtor(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.08;
+            this.controls.enablePan = true;
+            this.controls.enableZoom = true;
+            this.controls.enableRotate = true;
+            this.controls.autoRotate = this.autoRotateEnabled;
+            if (window.THREE.MOUSE) {
+                this.controls.mouseButtons = {
+                    LEFT: window.THREE.MOUSE.ROTATE,
+                    MIDDLE: window.THREE.MOUSE.DOLLY,
+                    RIGHT: window.THREE.MOUSE.PAN
+                };
+            }
+            if (window.THREE.TOUCH) {
+                this.controls.touches = {
+                    ONE: window.THREE.TOUCH.ROTATE,
+                    TWO: window.THREE.TOUCH.DOLLY_PAN
+                };
+            }
+        } else {
+            this.controls = null;
+            this.attachManualControls();
+        }
+
+        this.applySize();
+        this.resizeObserver = new ResizeObserver(() => this.applySize());
+        this.resizeObserver.observe(this.viewport);
+    }
+
+    async loadModel(options, requestId) {
+        if (!options?.url || !this.scene) return;
+        this.setStatus("Loading model...", options.fallback);
+        try {
+            const object = await this.rendererHost.loadModel(options.url);
+            if (this.requestId !== requestId) return;
+            if (this.root) {
+                this.scene.remove(this.root);
+                this.root = null;
+            }
+            const clone = object.clone(true);
+            const bounds = this.rendererHost.prepareModel(clone);
+            this.root = clone;
+            this.scene.add(clone);
+            if (bounds) {
+                this.rendererHost.fitCamera({ camera: this.camera }, bounds);
+                this.controls?.target?.set?.(0, 0, 0);
+                this.controls?.saveState?.();
+                this.setZoomBase();
+            }
+            this.clearStatus();
+        } catch (error) {
+            if (this.requestId !== requestId) return;
+            this.setStatus("Model preview unavailable.", options.fallback);
+            console.warn("Expanded viewer failed", error);
+        }
+    }
+
+    applySize() {
+        if (!this.renderer || !this.camera || !this.viewport) return;
+        const rect = this.viewport.getBoundingClientRect();
+        const width = Math.max(1, Math.floor(rect.width));
+        const height = Math.max(1, Math.floor(rect.height));
+        this.renderer.setSize(width, height, false);
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+    }
+
+    render() {
+        if (!this.active || !this.renderer || !this.scene || !this.camera) return;
+        this.controls?.update?.();
+        if (!this.controls && this.root && this.autoRotateEnabled) {
+            this.root.rotation.y += state.modelViewer.rotateSensitivity;
+        }
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    startRenderLoop() {
+        if (this.renderLoopId) return;
+        const tick = () => {
+            if (!this.active) {
+                this.renderLoopId = 0;
+                return;
+            }
+            this.render();
+            this.renderLoopId = requestAnimationFrame(tick);
+        };
+        this.renderLoopId = requestAnimationFrame(tick);
+    }
+
+    stopRenderLoop() {
+        if (!this.renderLoopId) return;
+        cancelAnimationFrame(this.renderLoopId);
+        this.renderLoopId = 0;
+    }
+
+    attachManualControls() {
+        if (!this.renderer || !this.renderer.domElement || this.onPointerMove || this.onPointerUp) return;
+        const canvas = this.renderer.domElement;
+        canvas.addEventListener("pointerdown", (event) => {
+            this.dragActive = true;
+            this.dragPointerId = event.pointerId;
+            this.lastDragPosition = { x: event.clientX, y: event.clientY };
+            canvas.setPointerCapture?.(event.pointerId);
+        });
+
+        this.onPointerMove = (event) => {
+            if (!this.dragActive || this.dragPointerId !== event.pointerId || !this.lastDragPosition) return;
+            const dx = event.clientX - this.lastDragPosition.x;
+            const dy = event.clientY - this.lastDragPosition.y;
+            this.lastDragPosition = { x: event.clientX, y: event.clientY };
+            if (this.root) {
+                const sensitivity = state.modelViewer.rotateSensitivity;
+                this.root.rotation.y += dx * sensitivity;
+                this.root.rotation.x = Math.max(-1.2, Math.min(1.2, this.root.rotation.x + dy * sensitivity));
+            }
+            this.render();
+        };
+
+        this.onPointerUp = (event) => {
+            if (this.dragPointerId !== event.pointerId) return;
+            this.dragActive = false;
+            this.dragPointerId = null;
+            this.lastDragPosition = null;
+            canvas.releasePointerCapture?.(event.pointerId);
+        };
+
+        canvas.addEventListener("pointermove", this.onPointerMove);
+        canvas.addEventListener("pointerup", this.onPointerUp);
+        canvas.addEventListener("pointercancel", this.onPointerUp);
+        canvas.addEventListener("pointerleave", this.onPointerUp);
+    }
+
+    resetView() {
+        if (this.controls?.reset) {
+            this.controls.reset();
+        } else if (this.root) {
+            this.root.rotation.set(0, 0, 0);
+        }
+        this.setZoomBase();
+        this.setZoomFactor(1);
+        this.render();
+    }
+
+    close() {
+        if (!this.dialog) return;
+        this.active = false;
+        this.stopRenderLoop();
+        this.dialog.classList.add("hidden");
+        this.dialog.setAttribute("aria-hidden", "true");
+    }
+
+    setZoomBase() {
+        if (!this.camera) return;
+        const target = this.controls?.target ?? new window.THREE.Vector3(0, 0, 0);
+        this.zoomBaseDistance = this.camera.position.distanceTo(target);
+        this.zoomFactor = 1;
+        this.updateZoomConstraints();
+        this.syncZoomUI();
+    }
+
+    setZoomFactor(factor) {
+        if (!this.camera) return;
+        const range = this.getZoomRange();
+        const next = Math.min(range.max, Math.max(range.min, Number(factor) || 1));
+        const target = this.controls?.target ?? new window.THREE.Vector3(0, 0, 0);
+        const base = this.zoomBaseDistance ?? this.camera.position.distanceTo(target);
+        const direction = this.camera.position.clone().sub(target);
+        if (direction.lengthSq() > 0.0001) {
+            direction.normalize();
+        } else {
+            direction.set(0, 0, 1);
+        }
+        const distance = base / next;
+        this.camera.position.copy(target).add(direction.multiplyScalar(distance));
+        this.camera.updateProjectionMatrix();
+        this.controls?.update?.();
+        this.zoomFactor = next;
+        this.syncZoomUI();
+        this.render();
+    }
+
+    nudgeZoom(delta) {
+        this.setZoomFactor(this.zoomFactor + delta);
+    }
+
+    syncZoomUI() {
+        if (this.zoomSlider) {
+            this.zoomSlider.value = String(this.zoomFactor);
+        }
+        if (this.zoomValue) {
+            this.zoomValue.textContent = `${Math.round(this.zoomFactor * 100)}%`;
+        }
+    }
+
+    rotateBy(delta) {
+        if (this.controls?.rotateLeft) {
+            const speed = this.getRotateSpeed();
+            this.controls.rotateLeft(delta * speed);
+            this.controls.update?.();
+        } else if (this.root) {
+            this.root.rotation.y += delta * this.getRotateSpeed();
+        }
+        this.render();
+    }
+
+    toggleAutoRotate() {
+        this.autoRotateEnabled = !this.autoRotateEnabled;
+        if (this.controls) {
+            this.controls.autoRotate = this.autoRotateEnabled;
+        }
+        if (this.autoRotateBtn) {
+            this.autoRotateBtn.classList.toggle("is-active", this.autoRotateEnabled);
+            this.autoRotateBtn.textContent = this.autoRotateEnabled ? "Auto Rotate: On" : "Auto Rotate";
+        }
+        this.render();
+    }
+
+    getZoomRange() {
+        const min = clamp(Number(state.modelViewer.zoomMin) || 0.7, 0.4, 1);
+        const max = clamp(Number(state.modelViewer.zoomMax) || 1.6, 1, 3);
+        if (min >= max) {
+            return { min: 0.7, max: 1.6 };
+        }
+        return { min, max };
+    }
+
+    getRotateSpeed() {
+        return clamp(Number(state.modelViewer.rotateSensitivity) || 0.01, 0.002, 0.05) * 10;
+    }
+
+    updateZoomConstraints() {
+        if (!this.zoomBaseDistance) return;
+        const range = this.getZoomRange();
+        const minDistance = this.zoomBaseDistance / range.max;
+        const maxDistance = this.zoomBaseDistance / range.min;
+        if (this.controls) {
+            this.controls.minDistance = minDistance;
+            this.controls.maxDistance = maxDistance;
+            this.controls.zoomSpeed = clamp(Number(state.modelViewer.zoomSpeed) || 0.9, 0.2, 2);
+            this.controls.rotateSpeed = this.getRotateSpeed();
+        }
+        if (this.zoomSlider) {
+            this.zoomSlider.min = String(range.min);
+            this.zoomSlider.max = String(range.max);
+        }
+        this.setZoomFactor(this.zoomFactor);
+    }
+
+    applySettings(settings) {
+        if (!settings) return;
+        this.autoRotateEnabled = Boolean(settings.autoRotate);
+        if (this.controls) {
+            this.controls.autoRotate = this.autoRotateEnabled;
+        }
+        if (this.autoRotateBtn) {
+            this.autoRotateBtn.classList.toggle("is-active", this.autoRotateEnabled);
+            this.autoRotateBtn.textContent = this.autoRotateEnabled ? "Auto Rotate: On" : "Auto Rotate";
+        }
+        this.updateZoomConstraints();
+        this.syncZoomUI();
+    }
+
+    setStatus(message, fallback) {
+        if (!this.status) return;
+        this.status.innerHTML = "";
+        this.status.classList.remove("hidden");
+        if (fallback) {
+            const img = document.createElement("img");
+            img.src = fallback;
+            img.alt = "";
+            img.className = "item-icon";
+            this.status.appendChild(img);
+        }
+        const label = document.createElement("span");
+        label.textContent = message;
+        this.status.appendChild(label);
+    }
+
+    clearStatus() {
+        if (!this.status) return;
+        this.status.classList.add("hidden");
+        this.status.innerHTML = "";
+    }
+}
+
 class ModelRenderer {
     constructor() {
         this.sprites = new Set();
+        this.viewer = null;
         const objCtor = objLoaderCtor ?? window.THREE?.OBJLoader ?? window.OBJLoader;
         const gltfCtor = gltfLoaderCtor ?? window.THREE?.GLTFLoader ?? window.GLTFLoader;
         this.objLoader = objCtor ? new objCtor() : null;
@@ -3025,6 +3902,7 @@ class ModelRenderer {
             }
             sprite.renderer.render(sprite.scene, sprite.camera);
         }
+        this.viewer?.render();
     }
 
     applySize(sprite) {
@@ -3041,6 +3919,23 @@ class ModelRenderer {
             if (!sprite.container.isConnected) continue;
             this.applySize(sprite);
         }
+    }
+
+    ensureViewer() {
+        if (!this.viewer) {
+            this.viewer = new ExpandedModelViewerDialog(this);
+        }
+        return this.viewer;
+    }
+
+    openExpandedViewerFromContainer(container) {
+        if (!(container instanceof HTMLElement)) return;
+        const viewer = this.ensureViewer();
+        viewer.open({
+            url: container.dataset.model,
+            fallback: container.dataset.fallback,
+            label: container.dataset.label || "3D Model Viewer"
+        });
     }
 
     prepareModel(object) {
@@ -3298,6 +4193,18 @@ function setupControls() {
             closeDebug.onclick = () => ui.debugOverlay.classList.add("hidden");
         }
     }
+    if (ui.debugControlsToggle) {
+        ui.debugControlsToggle.onclick = () => {
+            setDebugControlsEnabled(!state.debugControlsEnabled);
+        };
+    }
+    if (ui.freezeTicksToggle) {
+        ui.freezeTicksToggle.onclick = () => {
+            if (!state.debugControlsEnabled) return;
+            state.isLocked = !state.isLocked;
+            refreshToggleButtons();
+        };
+    }
     if (ui.openErrorsBtn && ui.errorDialog) {
         ui.openErrorsBtn.onclick = () => {
             ui.errorDialog.classList.remove("hidden");
@@ -3339,19 +4246,27 @@ function setupControls() {
     }
     setupModelUpload();
     ui.taskAction.onclick = toggleSkillAction;
-    document.getElementById("tickBtn").onclick = tickOnce;
-    document.getElementById("offlineBtn").onclick = () => runOffline(10);
-    document.getElementById("saveBtn").onclick = saveSnapshot;
-    document.getElementById("loadBtn").onclick = loadSnapshot;
+    document.getElementById("tickBtn").onclick = () => {
+        if (!state.debugControlsEnabled) return;
+        tickOnce();
+    };
+    document.getElementById("offlineBtn").onclick = () => {
+        if (!state.debugControlsEnabled) return;
+        runOffline(10);
+    };
+    document.getElementById("saveBtn").onclick = () => saveSnapshot(false, false);
+    document.getElementById("loadBtn").onclick = () => loadSnapshot(false);
     const resetBtn = document.getElementById("resetDevBtn");
     if (resetBtn && DEV_MODE) {
         resetBtn.onclick = resetDevAccount;
     }
     document.getElementById("toggleSandbox").onclick = () => {
+        if (!state.debugControlsEnabled) return;
         state.sandboxEnabled = !state.sandboxEnabled;
         refreshToggleButtons();
     };
     document.getElementById("toggleLock").onclick = () => {
+        if (!state.debugControlsEnabled) return;
         state.isLocked = !state.isLocked;
         refreshToggleButtons();
     };
@@ -3366,23 +4281,19 @@ function setupControls() {
         };
     }
 
-    const levelButtons = document.querySelectorAll("[data-level-boost]");
-    levelButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-            const boost = Number(btn.getAttribute("data-level-boost") || 0);
-            boostSkillLevels(selectedSkillId, boost);
-        });
-    });
-    const levelInput = document.getElementById("levelBoostInput");
-    const levelApply = document.getElementById("levelBoostApply");
-    if (levelInput && levelApply) {
-        levelApply.addEventListener("click", () => {
-            const boost = Math.floor(Number(levelInput.value || 0));
-            if (boost > 0) {
-                boostSkillLevels(selectedSkillId, boost);
-                levelInput.value = "";
+    if (ui.tickBatchInput) {
+        ui.tickBatchInput.addEventListener("input", () => updateTickBatchPreview());
+        updateTickBatchPreview();
+    }
+    if (ui.tickBatchBtn) {
+        ui.tickBatchBtn.onclick = () => {
+            if (!state.debugControlsEnabled) return;
+            const amount = Math.max(1, Math.floor(Number(ui.tickBatchInput?.value || 0)));
+            for (let i = 0; i < amount; i += 1) {
+                tickOnce({ recordSample: false });
             }
-        });
+            updateTickBatchPreview();
+        };
     }
 
     ui.zoomSlider.oninput = (event) => {
@@ -3390,10 +4301,28 @@ function setupControls() {
     };
 
     if (ui.loadModulesBtn) {
-        ui.loadModulesBtn.onclick = () => loadExternalModulesFromInput();
+        ui.loadModulesBtn.onclick = () => {
+            if (!state.debugControlsEnabled) return;
+            loadExternalModulesFromInput();
+        };
     }
     if (ui.clearModulesBtn) {
-        ui.clearModulesBtn.onclick = () => clearExternalModules();
+        ui.clearModulesBtn.onclick = () => {
+            if (!state.debugControlsEnabled) return;
+            clearExternalModules();
+        };
+    }
+
+    if (ui.modelExpandBtn) {
+        ui.modelExpandBtn.addEventListener("click", () => {
+            const preview = document.querySelector(".model-preview.model-viewport");
+            if (!preview) return;
+            if (!modelRenderer) {
+                modelRenderer = new ModelRenderer();
+            }
+            if (!modelRenderer) return;
+            modelRenderer.openExpandedViewerFromContainer(preview);
+        });
     }
 
     if (ui.openThemeBtn && ui.themeDialog) {
@@ -3488,6 +4417,46 @@ function refreshToggleButtons() {
     const lockBtn = document.getElementById("toggleLock");
     sandboxBtn.textContent = state.sandboxEnabled ? "🧪 Sandbox On" : "🧪 Sandbox Off";
     lockBtn.textContent = state.isLocked ? "🔒 Locked" : "🔓 Unlocked";
+    if (ui.debugControlsToggle) {
+        ui.debugControlsToggle.textContent = state.debugControlsEnabled ? "Debug Controls: On" : "Debug Controls: Off";
+    }
+    if (ui.freezeTicksToggle) {
+        ui.freezeTicksToggle.textContent = state.isLocked ? "Freeze Ticks: On" : "Freeze Ticks: Off";
+        ui.freezeTicksToggle.disabled = !state.debugControlsEnabled;
+    }
+    if (sandboxBtn) {
+        sandboxBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (lockBtn) {
+        lockBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.tickBtn) {
+        ui.tickBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.offlineBtn) {
+        ui.offlineBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.saveBtn) {
+        ui.saveBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.loadBtn) {
+        ui.loadBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.tickBatchInput) {
+        ui.tickBatchInput.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.tickBatchBtn) {
+        ui.tickBatchBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.externalModuleInput) {
+        ui.externalModuleInput.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.loadModulesBtn) {
+        ui.loadModulesBtn.disabled = !state.debugControlsEnabled;
+    }
+    if (ui.clearModulesBtn) {
+        ui.clearModulesBtn.disabled = !state.debugControlsEnabled;
+    }
 }
 
 async function setupPixi() {
@@ -3559,37 +4528,46 @@ async function main() {
     restoreModuleState();
     loadPinnedProperties();
     if (DEV_MODE && localStorage.getItem(STORAGE_KEY)) {
-        loadSnapshot();
+        loadSnapshot(true);
     }
+    applyModelViewerSettings();
     ensureSelectedSkill();
     ThemeManager.loadBuiltIns();
     ThemeManager.restore();
     applyDevModeUI();
     updateErrorButton();
 
-    ui.debugOnline.textContent = "Online";
-    ui.debugOffline.textContent = `Last offline: ${lastOfflineSeconds}s`;
-    ui.debugUiUpdates.textContent = "UI updates/frame: --";
+    if (ui.debugOnline) {
+        ui.debugOnline.textContent = "Online";
+    }
+    if (ui.debugOffline) {
+        ui.debugOffline.textContent = `Last offline: ${lastOfflineSeconds}s`;
+    }
+    if (ui.debugUiUpdates) {
+        ui.debugUiUpdates.textContent = "UI updates/frame: --";
+    }
     applyZoom(state.zoom);
     applyTickRate(state.tickRate);
     renderSkills();
     updateLists();
     updateInspectors();
     renderPinnedProperties();
+    setupRuntimeGraph();
     updateDebugTelemetry();
     refreshToggleButtons();
     renderSkillContext();
     setupTabs();
     setupSplitters();
     setupControls();
+    setDebugControlsEnabled(state.debugControlsEnabled);
     await setupPixi();
     setupPwa();
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
-            saveSnapshot(true);
+            saveSnapshot(true, true);
         }
     });
-    window.addEventListener("beforeunload", () => saveSnapshot(true));
+    window.addEventListener("beforeunload", () => saveSnapshot(true, true));
     document.addEventListener("click", () => {
         if (popoverPinned) {
             popoverPinned = false;

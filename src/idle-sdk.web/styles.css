@@ -40,6 +40,27 @@ body * {
     -ms-user-select: none;
 }
 
+user-select: none;
+
+
+input,
+textarea,
+select,
+[contenteditable="true"],
+.text-input {
+    user-select: text;
+}
+
+img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+.button img,
+.tab-button img {
+    pointer-events: none;
+}
+
 button,
 input,
 textarea,
@@ -794,6 +815,90 @@ margin-left: 0.18em;
     width: 100%;
     height: 100%;
     display: block;
+}
+
+.model-viewer-panel {
+    width: min(980px, 94vw);
+    max-height: 90vh;
+}
+
+.model-viewer-panel .theme-body {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    overflow: hidden;
+}
+
+.model-viewer-viewport {
+    position: relative;
+    border-radius: 12px;
+    border: 1px solid var(--card-border);
+    background: color-mix(in srgb, var(--panel) 85%, #0b1220);
+    width: 100%;
+    flex: 1;
+    min-height: 360px;
+    overflow: hidden;
+    touch-action: none;
+}
+
+.model-viewer-viewport canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.model-viewer-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(8, 12, 20, 0.55);
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    padding: 12px;
+    pointer-events: none;
+}
+
+.model-viewer-status.hidden {
+    display: none;
+}
+
+.model-viewer-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.model-viewer-control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.model-viewer-zoom {
+    align-items: center;
+}
+
+.model-viewer-zoom-slider {
+    width: min(220px, 40vw);
+}
+
+.model-viewer-controls .button.ghost {
+    padding: 6px 10px;
+}
+
+.model-viewer-controls .button.is-active {
+    border-color: rgba(96, 165, 250, 0.65);
+    color: var(--text);
+    background: rgba(96, 165, 250, 0.15);
 }
 
 .model-fallback {
@@ -1583,8 +1688,8 @@ margin-left: 0.18em;
 }
 
 .overlay-panel {
-    width: min(520px, 33vw);
-    height: 85vh;
+    width: min(720px, 94vw);
+    height: min(88vh, 920px);
     background: var(--panel);
     border: 1px solid var(--card-border);
     border-radius: 16px;
@@ -1594,11 +1699,36 @@ margin-left: 0.18em;
     gap: 12px;
 }
 
+.overlay-panel.controls-locked .overlay-body {
+    opacity: 0.6;
+    filter: grayscale(0.2);
+}
+
+.overlay-panel.controls-locked .overlay-tabs .tab-button {
+    opacity: 0.7;
+}
+
+.overlay-panel.controls-locked .module-card,
+.overlay-panel.controls-locked .panel-section,
+.overlay-panel.controls-locked .module-prop,
+.overlay-panel.controls-locked .pin-toggle {
+    opacity: 0.7;
+}
+
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    filter: grayscale(0.2);
+}
+
 .overlay-panel.expanded {
-    width: min(1160px, 94vw);
-    height: 92vh;
+    width: min(1280px, 96vw);
+    height: min(92vh, 980px);
     display: grid;
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: minmax(160px, 220px) 1fr;
     grid-template-rows: auto 1fr;
     grid-template-areas:
         "header header"
@@ -1627,11 +1757,34 @@ margin-left: 0.18em;
     overflow: hidden;
 }
 
+.overlay-body {
+    overflow: auto;
+    padding-right: 2px;
+}
+
 .overlay-panel.expanded .tab-panel.layout-grid.active {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
     align-items: start;
+}
+
+.tab-panel.layout-grid.active {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    align-items: start;
+    align-content: start;
+}
+
+.tab-panel.preview-stack.active {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.overview-grid {
+    grid-template-columns: minmax(260px, 1.3fr) minmax(220px, 0.9fr) minmax(200px, 0.8fr);
 }
 
 .overlay-panel.expanded .tab-panel.active {
@@ -1655,6 +1808,119 @@ margin-left: 0.18em;
 .overlay-panel.expanded .model-preview.model-viewport {
     max-width: 100%;
     aspect-ratio: 16 / 9;
+}
+
+.runtime-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.runtime-card {
+    background: var(--panel);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.runtime-card-title {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.runtime-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.runtime-line,
+.runtime-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12.5px;
+    color: var(--muted);
+}
+
+.runtime-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.runtime-row strong {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.runtime-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+}
+
+.runtime-badge-muted {
+    color: var(--muted);
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.runtime-badge-warn {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.runtime-badge-success {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.runtime-graph canvas {
+    width: 100%;
+    height: 90px;
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+@media (max-width: 980px) {
+    .overlay-panel {
+        width: min(94vw, 720px);
+    }
+
+    .overlay-panel.expanded {
+        width: 96vw;
+        height: 90vh;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr;
+        grid-template-areas:
+            "header"
+            "tabs"
+            "body";
+    }
+
+    .overlay-panel.expanded .overlay-tabs {
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid var(--card-border);
+        padding-bottom: 8px;
+    }
+
+    .overview-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .theme-dialog {

@@ -201,6 +201,42 @@
         </div>
     </div>
 
+    <div id="modelViewerDialog" class="theme-dialog hidden" role="dialog" aria-modal="true">
+        <div class="theme-panel model-viewer-panel">
+            <div class="theme-header">
+                <div>
+                    <div id="modelViewerTitle" class="overlay-title">3D Model Viewer</div>
+                    <div class="subtle">Drag to rotate • Right-drag or two-finger drag to pan • Scroll/pinch to zoom
+                    </div>
+                </div>
+                <div class="button-row">
+                    <button id="modelViewerReset" class="button ghost">Reset</button>
+                    <button id="modelViewerClose" class="button ghost">✕</button>
+                </div>
+            </div>
+            <div class="theme-body">
+                <div id="modelViewerViewport" class="model-viewer-viewport">
+                    <div id="modelViewerStatus" class="model-viewer-status hidden"></div>
+                </div>
+                <div class="model-viewer-controls">
+                    <div class="model-viewer-control-group">
+                        <button id="modelViewerRotateLeft" class="button ghost" title="Rotate left">⟲</button>
+                        <button id="modelViewerRotateRight" class="button ghost" title="Rotate right">⟳</button>
+                        <button id="modelViewerAutoRotate" class="button ghost" title="Toggle auto-rotate">Auto
+                            Rotate</button>
+                    </div>
+                    <div class="model-viewer-control-group model-viewer-zoom">
+                        <button id="modelViewerZoomOut" class="button ghost" title="Zoom out">−</button>
+                        <input id="modelViewerZoom" class="model-viewer-zoom-slider" type="range" min="0.5" max="2.5"
+                            step="0.01" value="1" />
+                        <button id="modelViewerZoomIn" class="button ghost" title="Zoom in">＋</button>
+                        <span id="modelViewerZoomValue" class="subtle">100%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="themeDialog" class="theme-dialog hidden" role="dialog" aria-modal="true">
         <div class="theme-panel">
             <div class="theme-header">
@@ -237,7 +273,7 @@
                     <div class="subtle">Runtime warnings and errors</div>
                 </div>
                 <div class="button-row">
-                    <button id="copyErrors" class="button ghost">Copy</button>
+                    <button id="copyErrors" class="button ghost">📋 Copy</button>
                     <button id="clearErrors" class="button ghost">Clear</button>
                     <button id="closeErrors" class="button ghost">✕</button>
                 </div>
@@ -274,14 +310,57 @@
                 <button class="tab-button" data-tab="preview">🧊 3D Preview</button>
             </div>
             <div class="overlay-body">
-                <div class="tab-panel layout-grid active" data-panel="overview">
+                <div class="tab-panel layout-grid overview-grid active" data-panel="overview">
                     <div class="panel-section">
-                        <div class="section-title">Runtime</div>
-                        <div id="debugTickRate" class="subtle">Tick rate: --</div>
-                        <div id="debugFps" class="subtle">FPS: --</div>
-                        <div id="debugUiUpdates" class="subtle">UI updates/frame: --</div>
-                        <div id="debugOnline" class="subtle">Online</div>
-                        <div id="debugOffline" class="subtle">Last offline: n/a</div>
+                        <div class="section-title">Runtime Diagnostics</div>
+                        <div class="button-row">
+                            <button id="debugControlsToggle" class="button ghost">Debug Controls: On</button>
+                            <button id="freezeTicksToggle" class="button ghost">Freeze Ticks: Off</button>
+                        </div>
+                        <div class="subtle">Debug Controls lock edits and pins. Freeze Ticks pauses simulation updates.
+                        </div>
+                        <div class="runtime-grid">
+                            <div class="runtime-card">
+                                <div class="runtime-card-title">Performance</div>
+                                <div id="runtimePerf" class="runtime-list">
+                                    <div id="debugFps" class="runtime-line">FPS: --</div>
+                                    <div id="debugTickRate" class="runtime-line">Tick rate: --</div>
+                                    <div id="debugUiUpdates" class="runtime-line">UI updates/frame: --</div>
+                                </div>
+                            </div>
+                            <div class="runtime-card">
+                                <div class="runtime-card-title">Session</div>
+                                <div id="runtimeSession" class="runtime-list">
+                                    <div id="debugOnline" class="runtime-line">Online</div>
+                                    <div id="debugOffline" class="runtime-line">Last offline: n/a</div>
+                                    <div id="runtimeHost" class="runtime-line">Host: --</div>
+                                    <div id="runtimeProtocol" class="runtime-line">Protocol: --</div>
+                                    <div id="runtimeDevMode" class="runtime-line">Dev Mode: --</div>
+                                    <div id="runtimeUptime" class="runtime-line">Uptime: --</div>
+                                    <div id="runtimeSaved" class="runtime-line">Last save: --</div>
+                                </div>
+                            </div>
+                            <div class="runtime-card">
+                                <div class="runtime-card-title">Renderer</div>
+                                <div id="runtimeRenderer" class="runtime-list"></div>
+                            </div>
+                            <div class="runtime-card">
+                                <div class="runtime-card-title">Engine</div>
+                                <div id="runtimeEngine" class="runtime-list"></div>
+                            </div>
+                            <div class="runtime-card">
+                                <div class="runtime-card-title">Storage</div>
+                                <div id="runtimeStorage" class="runtime-list"></div>
+                            </div>
+                            <div class="runtime-card">
+                                <div class="runtime-card-title">Errors</div>
+                                <div id="runtimeErrors" class="runtime-list"></div>
+                            </div>
+                            <div class="runtime-card runtime-graph">
+                                <div class="runtime-card-title">Frame Timeline</div>
+                                <canvas id="runtimeGraph" width="260" height="90"></canvas>
+                            </div>
+                        </div>
                     </div>
                     <div class="panel-section">
                         <div class="section-title">Pinned</div>
@@ -295,6 +374,11 @@
                             <button id="saveBtn" class="button">💾 Save</button>
                             <button id="loadBtn" class="button">📂 Load</button>
                         </div>
+                        <div class="button-row">
+                            <input id="tickBatchInput" class="text-input" type="number" min="1" step="1" value="60" />
+                            <button id="tickBatchBtn" class="button">Run Ticks</button>
+                            <span id="tickBatchTime" class="subtle">00:00:00:00</span>
+                        </div>
                     </div>
                 </div>
                 <div class="tab-panel layout-grid" data-panel="controls">
@@ -307,19 +391,7 @@
                             <button id="toggleSandbox" class="button ghost">🧪 Sandbox</button>
                             <button id="toggleLock" class="button ghost">🔓 Lock</button>
                         </div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-title">Skill Boosts</div>
-                        <div class="button-row">
-                            <button class="button" data-level-boost="1">+1 Level</button>
-                            <button class="button" data-level-boost="5">+5 Levels</button>
-                            <button class="button" data-level-boost="10">+10 Levels</button>
-                        </div>
-                        <div class="button-row">
-                            <input id="levelBoostInput" class="text-input" type="number" min="1"
-                                placeholder="Custom levels" />
-                            <button id="levelBoostApply" class="button primary">Apply</button>
-                        </div>
+                        <div class="subtle">Sandbox: enables safe experimentation. Lock: pauses simulation ticks.</div>
                     </div>
                     <div class="panel-section">
                         <div class="section-title">View</div>
@@ -361,11 +433,14 @@
                         </div>
                     </div>
                 </div>
-                <div class="tab-panel layout-grid" data-panel="preview">
+                <div class="tab-panel preview-stack" data-panel="preview">
                     <div class="panel-section">
                         <div class="section-title">3D Model Preview</div>
-                        <div class="model-preview model-viewport" data-model=""
+                        <div class="model-preview model-viewport" data-model="" data-label="3D Preview"
                             data-fallback="assets/icons/keno_dark.png" data-spin="true" data-wobble="false"></div>
+                        <div class="button-row">
+                            <button id="modelExpandBtn" class="button ghost">Expand Viewer</button>
+                        </div>
                         <div class="subtle">Upload a GLB/GLTF/OBJ model to preview.</div>
                     </div>
                     <div class="panel-section">
