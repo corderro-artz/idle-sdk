@@ -1715,6 +1715,21 @@ margin-left: 0.18em;
     opacity: 0.7;
 }
 
+.debug-controls-section {
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--card-border));
+    background: color-mix(in srgb, var(--panel) 80%, var(--accent) 8%);
+}
+
+.debug-controls-toggle {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.debug-controls-toggle.is-active {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent),
+        0 0 18px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
 button:disabled,
 input:disabled,
 textarea:disabled,

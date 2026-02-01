@@ -311,14 +311,16 @@
             </div>
             <div class="overlay-body">
                 <div class="tab-panel layout-grid overview-grid active" data-panel="overview">
+                    <div class="panel-section debug-controls-section">
+                        <div class="section-title">Debug Controls</div>
+                        <div class="button-row">
+                            <button id="debugControlsToggle" class="button primary debug-controls-toggle">Debug Console: On</button>
+                            <span id="debugControlsBadge" class="runtime-badge runtime-badge-success">Active</span>
+                        </div>
+                        <div class="subtle">Controls editing, pins, and debug actions. Always available to re-enable.</div>
+                    </div>
                     <div class="panel-section">
                         <div class="section-title">Runtime Diagnostics</div>
-                        <div class="button-row">
-                            <button id="debugControlsToggle" class="button ghost">Debug Controls: On</button>
-                            <button id="freezeTicksToggle" class="button ghost">Freeze Ticks: Off</button>
-                        </div>
-                        <div class="subtle">Debug Controls lock edits and pins. Freeze Ticks pauses simulation updates.
-                        </div>
                         <div class="runtime-grid">
                             <div class="runtime-card">
                                 <div class="runtime-card-title">Performance</div>
@@ -389,7 +391,6 @@
                         </div>
                         <div class="button-row">
                             <button id="toggleSandbox" class="button ghost">🧪 Sandbox</button>
-                            <button id="toggleLock" class="button ghost">🔓 Lock</button>
                         </div>
                         <div class="subtle">Sandbox: enables safe experimentation. Lock: pauses simulation ticks.</div>
                     </div>

@@ -12,10 +12,10 @@ const js = fs.readFileSync(jsPath, "utf8");
 
 test("Overview includes master debug controls and tick batch", () => {
     assert.match(html, /id="debugControlsToggle"/);
-    assert.match(html, /id="freezeTicksToggle"/);
     assert.match(html, /id="tickBatchInput"/);
     assert.match(html, /id="tickBatchBtn"/);
     assert.match(html, /id="tickBatchTime"/);
+    assert.match(html, /id="debugControlsBadge"/);
 });
 
 test("Debug controls gating exists in module and pin logic", () => {

@@ -176,7 +176,7 @@ const ui = {
     debugOverlayPanel: document.querySelector(".overlay-panel"),
     debugSizeToggle: document.getElementById("toggleDebugSize"),
     debugControlsToggle: document.getElementById("debugControlsToggle"),
-    freezeTicksToggle: document.getElementById("freezeTicksToggle"),
+    debugControlsBadge: document.getElementById("debugControlsBadge"),
     tickBatchInput: document.getElementById("tickBatchInput"),
     tickBatchBtn: document.getElementById("tickBatchBtn"),
     tickBatchTime: document.getElementById("tickBatchTime"),
@@ -4198,13 +4198,6 @@ function setupControls() {
             setDebugControlsEnabled(!state.debugControlsEnabled);
         };
     }
-    if (ui.freezeTicksToggle) {
-        ui.freezeTicksToggle.onclick = () => {
-            if (!state.debugControlsEnabled) return;
-            state.isLocked = !state.isLocked;
-            refreshToggleButtons();
-        };
-    }
     if (ui.openErrorsBtn && ui.errorDialog) {
         ui.openErrorsBtn.onclick = () => {
             ui.errorDialog.classList.remove("hidden");
@@ -4263,11 +4256,6 @@ function setupControls() {
     document.getElementById("toggleSandbox").onclick = () => {
         if (!state.debugControlsEnabled) return;
         state.sandboxEnabled = !state.sandboxEnabled;
-        refreshToggleButtons();
-    };
-    document.getElementById("toggleLock").onclick = () => {
-        if (!state.debugControlsEnabled) return;
-        state.isLocked = !state.isLocked;
         refreshToggleButtons();
     };
 
@@ -4416,13 +4404,16 @@ function refreshToggleButtons() {
     const sandboxBtn = document.getElementById("toggleSandbox");
     const lockBtn = document.getElementById("toggleLock");
     sandboxBtn.textContent = state.sandboxEnabled ? "🧪 Sandbox On" : "🧪 Sandbox Off";
-    lockBtn.textContent = state.isLocked ? "🔒 Locked" : "🔓 Unlocked";
-    if (ui.debugControlsToggle) {
-        ui.debugControlsToggle.textContent = state.debugControlsEnabled ? "Debug Controls: On" : "Debug Controls: Off";
+    if (lockBtn) {
+        lockBtn.textContent = state.isLocked ? "🔒 Locked" : "🔓 Unlocked";
     }
-    if (ui.freezeTicksToggle) {
-        ui.freezeTicksToggle.textContent = state.isLocked ? "Freeze Ticks: On" : "Freeze Ticks: Off";
-        ui.freezeTicksToggle.disabled = !state.debugControlsEnabled;
+    if (ui.debugControlsToggle) {
+        ui.debugControlsToggle.textContent = state.debugControlsEnabled ? "Debug Console: On" : "Debug Console: Off";
+        ui.debugControlsToggle.classList.toggle("is-active", state.debugControlsEnabled);
+    }
+    if (ui.debugControlsBadge) {
+        ui.debugControlsBadge.textContent = state.debugControlsEnabled ? "Active" : "Locked";
+        ui.debugControlsBadge.className = `runtime-badge ${state.debugControlsEnabled ? "runtime-badge-success" : "runtime-badge-warn"}`;
     }
     if (sandboxBtn) {
         sandboxBtn.disabled = !state.debugControlsEnabled;
