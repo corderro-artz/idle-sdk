@@ -310,90 +310,118 @@
                 <button class="tab-button" data-tab="preview">🧊 3D Preview</button>
             </div>
             <div class="overlay-body">
-                <div class="tab-panel layout-grid overview-grid active" data-panel="overview">
-                    <div class="panel-section debug-controls-section">
-                        <div class="section-title">Debug Controls</div>
-                        <div class="button-row">
-                            <button id="debugControlsToggle" class="button primary debug-controls-toggle">Debug Console: On</button>
-                            <span id="debugControlsBadge" class="runtime-badge runtime-badge-success">Active</span>
-                        </div>
-                        <div class="subtle">Controls editing, pins, and debug actions. Always available to re-enable.</div>
+                <div class="tab-panel layout-grid overview-grid has-subtabs active" data-panel="overview">
+                    <div class="subtab-bar">
+                        <button class="subtab-button active" data-subtab="diagnostics">📊 Diagnostics</button>
+                        <button class="subtab-button" data-subtab="pinned">📌 Pinned</button>
+                        <button class="subtab-button" data-subtab="shortcuts">⚡ Shortcuts</button>
                     </div>
-                    <div class="panel-section">
-                        <div class="section-title">Runtime Diagnostics</div>
-                        <div class="runtime-grid">
-                            <div class="runtime-card">
-                                <div class="runtime-card-title">Performance</div>
-                                <div id="runtimePerf" class="runtime-list">
-                                    <div id="debugFps" class="runtime-line">FPS: --</div>
-                                    <div id="debugTickRate" class="runtime-line">Tick rate: --</div>
-                                    <div id="debugUiUpdates" class="runtime-line">UI updates/frame: --</div>
+                    <div class="subtab-panel active" data-subpanel="diagnostics">
+                        <div class="panel-section debug-controls-section">
+                            <div class="section-title">Debug Controls</div>
+                            <div class="button-row">
+                                <button id="debugControlsToggle" class="button primary debug-controls-toggle">Debug
+                                    Console:
+                                    On</button>
+                                <span id="debugControlsBadge" class="runtime-badge runtime-badge-success">Active</span>
+                            </div>
+                            <div class="subtle">Controls editing, pins, and debug actions. Always available to
+                                re-enable.
+                            </div>
+                            <div class="button-row">
+                                <button id="resetDevBtn" class="button ghost dev-only">♻ Reset Dev</button>
+                            </div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-title">Layout Mode</div>
+                            <div class="button-row">
+                                <button id="formFactorAuto" class="button ghost">Auto: On</button>
+                                <span id="formFactorStatus" class="runtime-badge runtime-badge-muted">Auto
+                                    (Desktop)</span>
+                            </div>
+                            <div class="button-row">
+                                <button id="formFactorDesktop" class="button ghost">Desktop</button>
+                                <button id="formFactorTablet" class="button ghost">Tablet</button>
+                                <button id="formFactorMobile" class="button ghost">Mobile</button>
+                            </div>
+                            <div class="subtle">Manual layout buttons are locked when Auto is on.</div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-title">Runtime Diagnostics</div>
+                            <div class="runtime-grid">
+                                <div class="runtime-card">
+                                    <div class="runtime-card-title">Performance</div>
+                                    <div id="runtimePerf" class="runtime-list">
+                                        <div id="debugFps" class="runtime-line"
+                                            title="FPS is measured per render; target pacing skips frames to maintain a steady cadence.">
+                                            FPS: --</div>
+                                        <div id="debugRefreshHz" class="runtime-line"
+                                            title="Display refresh estimate from requestAnimationFrame. Timer mode may not update this value.">
+                                            Display Hz: --</div>
+                                        <div id="debugTickRate" class="runtime-line">Tick rate: --</div>
+                                        <div id="debugUiUpdates" class="runtime-line">UI updates/frame: --</div>
+                                    </div>
+                                </div>
+                                <div class="runtime-card">
+                                    <div class="runtime-card-title">Session</div>
+                                    <div id="runtimeSession" class="runtime-list">
+                                        <div id="debugOnline" class="runtime-line">Online</div>
+                                        <div id="debugOffline" class="runtime-line">Last offline: n/a</div>
+                                        <div id="runtimeHost" class="runtime-line">Host: --</div>
+                                        <div id="runtimeProtocol" class="runtime-line">Protocol: --</div>
+                                        <div id="runtimeDevMode" class="runtime-line">Dev Mode: --</div>
+                                        <div id="runtimeUptime" class="runtime-line">Uptime: --</div>
+                                        <div id="runtimeSaved" class="runtime-line">Last save: --</div>
+                                    </div>
+                                </div>
+                                <div class="runtime-card">
+                                    <div class="runtime-card-title">Renderer</div>
+                                    <div id="runtimeRenderer" class="runtime-list"></div>
+                                </div>
+                                <div class="runtime-card">
+                                    <div class="runtime-card-title">Engine</div>
+                                    <div id="runtimeEngine" class="runtime-list"></div>
+                                </div>
+                                <div class="runtime-card">
+                                    <div class="runtime-card-title">Storage</div>
+                                    <div id="runtimeStorage" class="runtime-list"></div>
+                                </div>
+                                <div class="runtime-card">
+                                    <div class="runtime-card-title">Errors</div>
+                                    <div id="runtimeErrors" class="runtime-list"></div>
+                                </div>
+                                <div class="runtime-card runtime-graph">
+                                    <div class="runtime-card-title">Frame Timeline</div>
+                                    <canvas id="runtimeGraph" width="260" height="90"></canvas>
                                 </div>
                             </div>
-                            <div class="runtime-card">
-                                <div class="runtime-card-title">Session</div>
-                                <div id="runtimeSession" class="runtime-list">
-                                    <div id="debugOnline" class="runtime-line">Online</div>
-                                    <div id="debugOffline" class="runtime-line">Last offline: n/a</div>
-                                    <div id="runtimeHost" class="runtime-line">Host: --</div>
-                                    <div id="runtimeProtocol" class="runtime-line">Protocol: --</div>
-                                    <div id="runtimeDevMode" class="runtime-line">Dev Mode: --</div>
-                                    <div id="runtimeUptime" class="runtime-line">Uptime: --</div>
-                                    <div id="runtimeSaved" class="runtime-line">Last save: --</div>
-                                </div>
-                            </div>
-                            <div class="runtime-card">
-                                <div class="runtime-card-title">Renderer</div>
-                                <div id="runtimeRenderer" class="runtime-list"></div>
-                            </div>
-                            <div class="runtime-card">
-                                <div class="runtime-card-title">Engine</div>
-                                <div id="runtimeEngine" class="runtime-list"></div>
-                            </div>
-                            <div class="runtime-card">
-                                <div class="runtime-card-title">Storage</div>
-                                <div id="runtimeStorage" class="runtime-list"></div>
-                            </div>
-                            <div class="runtime-card">
-                                <div class="runtime-card-title">Errors</div>
-                                <div id="runtimeErrors" class="runtime-list"></div>
-                            </div>
-                            <div class="runtime-card runtime-graph">
-                                <div class="runtime-card-title">Frame Timeline</div>
-                                <canvas id="runtimeGraph" width="260" height="90"></canvas>
-                            </div>
                         </div>
                     </div>
-                    <div class="panel-section">
-                        <div class="section-title">Pinned</div>
-                        <div id="pinnedInspector" class="inspector"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-title">Shortcuts</div>
-                        <div class="button-row">
-                            <button id="tickBtn" class="button primary">⏱ Tick</button>
-                            <button id="offlineBtn" class="button">⏲ Offline 10s</button>
-                            <button id="saveBtn" class="button">💾 Save</button>
-                            <button id="loadBtn" class="button">📂 Load</button>
+                    <div class="subtab-panel" data-subpanel="pinned">
+                        <div class="panel-section">
+                            <div class="section-title">Pinned</div>
+                            <div id="pinnedInspector" class="inspector"></div>
                         </div>
-                        <div class="button-row">
-                            <input id="tickBatchInput" class="text-input" type="number" min="1" step="1" value="60" />
-                            <button id="tickBatchBtn" class="button">Run Ticks</button>
-                            <span id="tickBatchTime" class="subtle">00:00:00:00</span>
+                    </div>
+                    <div class="subtab-panel" data-subpanel="shortcuts">
+                        <div class="panel-section">
+                            <div class="section-title">Shortcuts</div>
+                            <div class="button-row">
+                                <button id="tickBtn" class="button primary">⏱ Tick</button>
+                                <button id="offlineBtn" class="button">⏲ Offline 10s</button>
+                                <button id="saveBtn" class="button">💾 Save</button>
+                                <button id="loadBtn" class="button">📂 Load</button>
+                            </div>
+                            <div class="button-row">
+                                <input id="tickBatchInput" class="text-input" type="number" min="1" step="1"
+                                    value="60" />
+                                <button id="tickBatchBtn" class="button">Run Ticks</button>
+                                <span id="tickBatchTime" class="subtle">00:00:00:00</span>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div class="tab-panel layout-grid" data-panel="controls">
-                    <div class="panel-section">
-                        <div class="section-title">Simulation</div>
-                        <div class="button-row">
-                            <button id="resetDevBtn" class="button ghost dev-only">♻ Reset Dev</button>
-                        </div>
-                        <div class="button-row">
-                            <button id="toggleSandbox" class="button ghost">🧪 Sandbox</button>
-                        </div>
-                        <div class="subtle">Sandbox: enables safe experimentation. Lock: pauses simulation ticks.</div>
-                    </div>
                     <div class="panel-section">
                         <div class="section-title">View</div>
                         <div class="zoom-row">
@@ -403,34 +431,45 @@
                         </div>
                     </div>
                 </div>
-                <div class="tab-panel layout-grid" data-panel="content">
-                    <div class="panel-section">
-                        <div class="section-title">Wallet</div>
-                        <div id="walletInspector" class="inspector"></div>
+                <div class="tab-panel layout-grid has-subtabs" data-panel="content">
+                    <div class="subtab-bar">
+                        <button class="subtab-button active" data-subtab="data">🧾 Data</button>
+                        <button class="subtab-button" data-subtab="packs">📦 Packs</button>
+                        <button class="subtab-button" data-subtab="modules">🧩 Modules</button>
                     </div>
-                    <div class="panel-section">
-                        <div class="section-title">Inventory</div>
-                        <div id="inventoryInspector" class="inspector"></div>
+                    <div class="subtab-panel active" data-subpanel="data">
+                        <div class="panel-section">
+                            <div class="section-title">Wallet</div>
+                            <div id="walletInspector" class="inspector"></div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-title">Inventory</div>
+                            <div id="inventoryInspector" class="inspector"></div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-title">Skills</div>
+                            <div id="skillInspector" class="inspector"></div>
+                        </div>
                     </div>
-                    <div class="panel-section">
-                        <div class="section-title">Skills</div>
-                        <div id="skillInspector" class="inspector"></div>
+                    <div class="subtab-panel" data-subpanel="packs">
+                        <div class="panel-section">
+                            <div class="section-title">Content Packs</div>
+                            <div id="contentPackInspector" class="inspector"></div>
+                        </div>
                     </div>
-                    <div class="panel-section">
-                        <div class="section-title">Content Packs</div>
-                        <div id="contentPackInspector" class="inspector"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-title">Modules</div>
-                        <div id="moduleInspector" class="inspector"></div>
-                    </div>
-                    <div class="panel-section">
-                        <div class="section-title">External Module Loader</div>
-                        <textarea id="externalModuleInput" class="text-input" rows="4"
-                            placeholder='[{"id":"my-mod","name":"My Mod","version":"1.0.0","enabled":true,"properties":[{"id":"rate","label":"Rate","type":"number","value":1}]}]'></textarea>
-                        <div class="button-row">
-                            <button id="loadModulesBtn" class="button">Load Modules</button>
-                            <button id="clearModulesBtn" class="button ghost">Clear</button>
+                    <div class="subtab-panel" data-subpanel="modules">
+                        <div class="panel-section">
+                            <div class="section-title">Modules</div>
+                            <div id="moduleInspector" class="inspector"></div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="section-title">External Module Loader</div>
+                            <textarea id="externalModuleInput" class="text-input" rows="4"
+                                placeholder='[{"id":"my-mod","name":"My Mod","version":"1.0.0","enabled":true,"properties":[{"id":"rate","label":"Rate","type":"number","value":1}]}]'></textarea>
+                            <div class="button-row">
+                                <button id="loadModulesBtn" class="button">Load Modules</button>
+                                <button id="clearModulesBtn" class="button ghost">Clear</button>
+                            </div>
                         </div>
                     </div>
                 </div>

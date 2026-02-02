@@ -14,10 +14,11 @@ test("Module storage is single source for renderer settings", () => {
     assert.doesNotMatch(js, /moduleState:\s*\{\s*modules/);
 });
 
-test("Renderer module exposes FPS cap property", () => {
+test("Renderer module exposes FPS target property", () => {
     assert.match(js, /id:\s*"renderer"[\s\S]*id:\s*"fpsCap"/);
+    assert.match(js, /id:\s*"renderer"[\s\S]*id:\s*"displaySync"/);
 });
 
-test("Diagnostics use module-backed FPS cap", () => {
-    assert.match(js, /FPS Cap[\s\S]*state\.renderFpsCap/);
+test("Diagnostics use module-backed FPS target", () => {
+    assert.match(js, /FPS Target[\s\S]*state\.renderFpsCap/);
 });

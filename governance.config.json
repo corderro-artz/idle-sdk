@@ -4,7 +4,7 @@
     "bootstrap":  {
                       "mode":  "defaults",
                       "skipped":  true,
-                      "timestamp":  "2026-01-28"
+                      "timestamp":  "2026-02-02"
                   },
     "versionControl":  "git-remote-ci",
     "testing":  "full",

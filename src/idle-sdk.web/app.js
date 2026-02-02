@@ -27,6 +27,8 @@ const CURRENCY_DEFS = {
 };
 
 const DEFAULT_RENDER_FPS_CAP = 30;
+const FPS_SAMPLE_WINDOW_MS = 3000;
+const MAX_TICKS_PER_FRAME = 20;
 const DEFAULT_MODEL_VIEWER_SETTINGS = Object.freeze({
     autoRotate: false,
     rotateSensitivity: 0.01,
@@ -39,10 +41,12 @@ const state = {
     tickRate: 1,
     tick: 0,
     isLocked: false,
-    sandboxEnabled: true,
     debugControlsEnabled: true,
     zoom: 1,
     renderFpsCap: DEFAULT_RENDER_FPS_CAP,
+    renderSyncToDisplay: true,
+    formFactorMode: "auto",
+    formFactorManual: "desktop",
     modelViewer: { ...DEFAULT_MODEL_VIEWER_SETTINGS },
     skillXpMultiplier: 1,
     rewardMultiplier: 1,
@@ -145,6 +149,7 @@ const ui = {
     debugOverlay: document.getElementById("debugOverlay"),
     debugTickRate: document.getElementById("debugTickRate"),
     debugFps: document.getElementById("debugFps"),
+    debugRefreshHz: document.getElementById("debugRefreshHz"),
     debugUiUpdates: document.getElementById("debugUiUpdates"),
     debugOnline: document.getElementById("debugOnline"),
     debugOffline: document.getElementById("debugOffline"),
@@ -177,6 +182,11 @@ const ui = {
     debugSizeToggle: document.getElementById("toggleDebugSize"),
     debugControlsToggle: document.getElementById("debugControlsToggle"),
     debugControlsBadge: document.getElementById("debugControlsBadge"),
+    formFactorAuto: document.getElementById("formFactorAuto"),
+    formFactorDesktop: document.getElementById("formFactorDesktop"),
+    formFactorTablet: document.getElementById("formFactorTablet"),
+    formFactorMobile: document.getElementById("formFactorMobile"),
+    formFactorStatus: document.getElementById("formFactorStatus"),
     tickBatchInput: document.getElementById("tickBatchInput"),
     tickBatchBtn: document.getElementById("tickBatchBtn"),
     tickBatchTime: document.getElementById("tickBatchTime"),
@@ -222,9 +232,8 @@ let selectedSkillId = "gambling";
 let pendingTaskBounceId = null;
 let lastTaskListKey = "";
 let running = true;
-let lastTick = performance.now();
-let fpsFrames = 0;
-let fpsElapsed = 0;
+let lastFrameTime = performance.now();
+let lastRenderTime = performance.now();
 let uiUpdates = 0;
 let lastUiUpdateCount = 0;
 let lastOfflineSeconds = 0;
@@ -237,6 +246,7 @@ let iconComboLevel = 0;
 let iconComboExpireAt = 0;
 let iconBurstTimeoutId = null;
 let tickIntervalId = null;
+let tickAccumulator = 0;
 let iconEnergy = 0;
 let iconEnergyVelocity = 0;
 let modelRenderer = null;
@@ -252,6 +262,9 @@ const rawConsoleWarn = console.warn.bind(console);
 const rawConsoleError = console.error.bind(console);
 const rawConsoleInfo = (console.info ?? console.log).bind(console);
 let currentFps = 0;
+let fpsMin = 0;
+let fpsMax = 0;
+let refreshHz = 0;
 let tickRateObserved = 0;
 let telemetryElapsed = 0;
 const tickSamples = [];
@@ -261,6 +274,7 @@ const runtimeFpsSamples = [];
 let runtimeGraphCtx = null;
 const sessionStartedAt = Date.now();
 let lastSavedAt = null;
+const fpsSamples = [];
 
 const moduleState = {
     simulation: { enabled: true },
@@ -291,6 +305,7 @@ const moduleDefinitions = [
                 id: "tickRate",
                 label: "Tick Rate",
                 type: "number",
+                description: "Simulation ticks per second.",
                 min: 0.5,
                 max: 5,
                 step: 0.5,
@@ -301,6 +316,7 @@ const moduleDefinitions = [
                 id: "locked",
                 label: "Locked",
                 type: "boolean",
+                description: "Pause simulation ticks without stopping rendering.",
                 get: () => state.isLocked,
                 set: (value) => {
                     state.isLocked = value;
@@ -493,8 +509,9 @@ const moduleDefinitions = [
         properties: [
             {
                 id: "fpsCap",
-                label: "FPS Cap",
+                label: "FPS Target",
                 type: "number",
+                description: "Desired render cadence in frames per second. Rendering may skip frames to maintain a steady target.",
                 min: 0,
                 max: 240,
                 step: 5,
@@ -506,9 +523,21 @@ const moduleDefinitions = [
                 }
             },
             {
+                id: "displaySync",
+                label: "Display Sync",
+                type: "boolean",
+                description: "Align render pacing to the display refresh using requestAnimationFrame. Off uses a timer-based cadence.",
+                get: () => state.renderSyncToDisplay,
+                set: (value) => {
+                    state.renderSyncToDisplay = Boolean(value);
+                    persistModuleState();
+                }
+            },
+            {
                 id: "zoom",
                 label: "Zoom",
                 type: "number",
+                description: "UI scale for the demo layout.",
                 min: 0.75,
                 max: 1.5,
                 step: 0.01,
@@ -519,6 +548,7 @@ const moduleDefinitions = [
                 id: "ringParticles",
                 label: "Ring Particles",
                 type: "boolean",
+                description: "Toggle particle effects around the skill ring.",
                 get: () => state.ringParticlesEnabled,
                 set: (value) => {
                     state.ringParticlesEnabled = Boolean(value);
@@ -813,6 +843,9 @@ function persistModuleState() {
             debugControlsEnabled: state.debugControlsEnabled,
             zoom: state.zoom,
             renderFpsCap: state.renderFpsCap,
+            renderSyncToDisplay: state.renderSyncToDisplay,
+            formFactorMode: state.formFactorMode,
+            formFactorManual: state.formFactorManual,
             modelViewer: {
                 autoRotate: state.modelViewer.autoRotate,
                 rotateSensitivity: state.modelViewer.rotateSensitivity,
@@ -832,6 +865,9 @@ function resetModulePreferencesToDefaults() {
         moduleState[key] = { enabled: value.enabled !== false };
     });
     state.renderFpsCap = DEFAULT_RENDER_FPS_CAP;
+    state.renderSyncToDisplay = true;
+    state.formFactorMode = "auto";
+    state.formFactorManual = "desktop";
     state.modelViewer = { ...DEFAULT_MODEL_VIEWER_SETTINGS };
     state.debugControlsEnabled = true;
     externalModules.length = 0;
@@ -848,6 +884,7 @@ function getDefaultPinnedProperties() {
         "telemetry.tickRate",
         "telemetry.errors",
         "module:simulation:tickRate",
+        "module:simulation:locked",
         "wallet.cash",
         "wallet.credit"
     ];
@@ -904,13 +941,134 @@ function createPinButton(id) {
     return button;
 }
 
+function getInfoText(meta) {
+    if (!meta) return null;
+    return meta.tooltip ?? meta.description ?? null;
+}
+
+function createInfoBadge(text) {
+    if (!text) return null;
+    const info = document.createElement("span");
+    info.className = "info-badge";
+    info.title = String(text);
+    info.setAttribute("aria-label", "Info");
+    return info;
+}
+
+function createLabelWithInfo(text, infoText) {
+    const labelWrap = document.createElement("span");
+    labelWrap.className = "module-prop-label";
+    const labelText = document.createElement("span");
+    labelText.textContent = text;
+    labelWrap.appendChild(labelText);
+    const badge = createInfoBadge(infoText);
+    if (badge) {
+        labelWrap.appendChild(badge);
+    }
+    return labelWrap;
+}
+
+function createSourceBadge(source) {
+    const badge = document.createElement("span");
+    const normalized = source === "external" ? "external" : "built-in";
+    badge.className = `source-badge source-badge-${normalized}`;
+    badge.textContent = normalized === "external" ? "External" : "Built-in";
+    badge.title = normalized === "external" ? "Loaded from external source" : "Bundled with the demo";
+    return badge;
+}
+
+function setupSubtabs() {
+    document.querySelectorAll(".subtab-bar").forEach((bar) => {
+        bar.querySelectorAll(".subtab-button").forEach((button) => {
+            button.addEventListener("click", () => {
+                const target = button.dataset.subtab;
+                const container = button.closest(".tab-panel");
+                if (!container || !target) return;
+                container.querySelectorAll(".subtab-button").forEach((btn) => btn.classList.remove("active"));
+                container.querySelectorAll(".subtab-panel").forEach((panel) => panel.classList.remove("active"));
+                button.classList.add("active");
+                const next = container.querySelector(`.subtab-panel[data-subpanel='${target}']`);
+                if (next) {
+                    next.classList.add("active");
+                }
+                updateDebugOverlayPosition();
+            });
+        });
+    });
+}
+
+function detectFormFactor() {
+    const width = window.innerWidth;
+    if (width <= 720) return "mobile";
+    if (width <= 1100) return "tablet";
+    return "desktop";
+}
+
+function applyFormFactor() {
+    const isAuto = state.formFactorMode === "auto";
+    const active = isAuto ? detectFormFactor() : state.formFactorMode;
+    document.body.dataset.formFactor = active;
+    const statusLabel = isAuto ? `Auto (${active[0].toUpperCase()}${active.slice(1)})` : active[0].toUpperCase() + active.slice(1);
+    if (ui.formFactorStatus) {
+        ui.formFactorStatus.textContent = statusLabel;
+    }
+    if (ui.formFactorAuto) {
+        ui.formFactorAuto.textContent = isAuto ? "Auto: On" : "Auto: Off";
+        ui.formFactorAuto.classList.toggle("is-active", isAuto);
+    }
+    [ui.formFactorDesktop, ui.formFactorTablet, ui.formFactorMobile].forEach((button) => {
+        if (!button) return;
+        button.disabled = isAuto;
+    });
+    if (ui.formFactorDesktop) ui.formFactorDesktop.classList.toggle("is-active", active === "desktop");
+    if (ui.formFactorTablet) ui.formFactorTablet.classList.toggle("is-active", active === "tablet");
+    if (ui.formFactorMobile) ui.formFactorMobile.classList.toggle("is-active", active === "mobile");
+    updateDebugOverlayPosition();
+}
+
+function setFormFactorMode(mode) {
+    if (mode === "auto") {
+        state.formFactorMode = "auto";
+    } else {
+        state.formFactorMode = mode;
+        state.formFactorManual = mode;
+    }
+    applyFormFactor();
+    persistModuleState();
+}
+
+function updateDebugOverlayPosition() {
+    if (!ui.debugOverlay || !ui.debugOverlayPanel) return;
+    if (ui.debugOverlay.classList.contains("hidden")) return;
+    const isExpanded = ui.debugOverlayPanel.classList.contains("expanded");
+    const activeFormFactor = document.body.dataset.formFactor;
+    const shouldAlign = isExpanded && activeFormFactor !== "mobile";
+    if (!shouldAlign) {
+        ui.debugOverlayPanel.style.removeProperty("top");
+        ui.debugOverlayPanel.style.removeProperty("left");
+        ui.debugOverlayPanel.style.removeProperty("width");
+        ui.debugOverlayPanel.style.removeProperty("height");
+        ui.debugOverlay.classList.remove("overlay-aligned");
+        return;
+    }
+    const target = document.querySelector(".skill-context");
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    ui.debugOverlayPanel.style.top = `${rect.top}px`;
+    ui.debugOverlayPanel.style.left = `${rect.left}px`;
+    ui.debugOverlayPanel.style.width = `${rect.width}px`;
+    ui.debugOverlayPanel.style.height = `${rect.height}px`;
+    ui.debugOverlay.classList.add("overlay-aligned");
+}
+
 function getTelemetryDescriptor(id) {
     if (id === "telemetry.fps") {
         return {
             id,
             label: "FPS",
             type: "readonly",
-            get: () => currentFps
+            description: "Measured render cadence with a rolling min/max window.",
+            get: () => formatFpsStat()
         };
     }
     if (id === "telemetry.tickRate") {
@@ -918,6 +1076,7 @@ function getTelemetryDescriptor(id) {
             id,
             label: "Tick Rate",
             type: "readonly",
+            description: "Observed simulation tick rate over the last few seconds.",
             get: () => Number.isFinite(tickRateObserved) ? tickRateObserved.toFixed(2) : "--"
         };
     }
@@ -926,6 +1085,7 @@ function getTelemetryDescriptor(id) {
             id,
             label: "UI Updates",
             type: "readonly",
+            description: "UI updates per rendered frame.",
             get: () => lastUiUpdateCount
         };
     }
@@ -934,6 +1094,7 @@ function getTelemetryDescriptor(id) {
             id,
             label: "Errors",
             type: "readonly",
+            description: "Runtime warning/error count.",
             get: () => errorLog.length
         };
     }
@@ -948,8 +1109,9 @@ function getTelemetryDescriptor(id) {
     if (id === "telemetry.renderCap") {
         return {
             id,
-            label: "FPS Cap",
+            label: "FPS Target",
             type: "readonly",
+            description: "Current FPS target setting for render pacing.",
             get: () => state.renderFpsCap || "Off"
         };
     }
@@ -985,6 +1147,7 @@ function getModuleDescriptor(moduleId, propId) {
     return {
         id: `module:${moduleId}:${propId}`,
         label: prop.label ?? prop.id,
+        description: prop.description,
         type: prop.type === "boolean" ? "boolean" : "number",
         min: Number.isFinite(prop.min) ? prop.min : 0,
         max: Number.isFinite(prop.max) ? prop.max : 999,
@@ -1012,6 +1175,7 @@ function getPackDescriptor(packId, propId) {
     return {
         id: `pack:${packId}:${propId}`,
         label: prop.label ?? prop.id,
+        description: prop.description,
         type: prop.type === "boolean" ? "boolean" : "number",
         min: Number.isFinite(prop.min) ? prop.min : 0,
         max: Number.isFinite(prop.max) ? prop.max : 999,
@@ -1060,6 +1224,7 @@ function renderPinnedProperties() {
     if (!ui.pinnedInspector) return;
     ui.pinnedInspector.innerHTML = "";
     pinnedUi.clear();
+    const controlsDisabled = !state.debugControlsEnabled;
     [...pinnedProperties].forEach((id) => {
         const descriptor = getPinnedDescriptor(id);
         if (!descriptor) {
@@ -1068,9 +1233,11 @@ function renderPinnedProperties() {
         }
         const row = document.createElement("div");
         row.className = "module-prop pinned-prop";
-        const label = document.createElement("span");
-        label.textContent = descriptor.label;
-        row.appendChild(label);
+        const labelWrap = createLabelWithInfo(
+            descriptor.label,
+            getInfoText(descriptor)
+        );
+        row.appendChild(labelWrap);
 
         let input = null;
         let value = null;
@@ -1079,7 +1246,11 @@ function renderPinnedProperties() {
             input = document.createElement("input");
             input.type = "checkbox";
             input.checked = Boolean(descriptor.get());
-            input.onchange = () => descriptor.set?.(input.checked);
+            input.disabled = controlsDisabled;
+            input.onchange = () => {
+                if (controlsDisabled) return;
+                descriptor.set?.(input.checked);
+            };
             row.appendChild(input);
         } else if (descriptor.type === "readonly") {
             value = document.createElement("span");
@@ -1093,7 +1264,11 @@ function renderPinnedProperties() {
             input.max = descriptor.max ?? 999;
             input.step = descriptor.step ?? 1;
             input.value = descriptor.get();
-            input.onchange = () => descriptor.set?.(input.value);
+            input.disabled = controlsDisabled;
+            input.onchange = () => {
+                if (controlsDisabled) return;
+                descriptor.set?.(input.value);
+            };
             value = document.createElement("span");
             value.className = "subtle";
             value.textContent = input.value;
@@ -1237,7 +1412,12 @@ function updateRuntimeDiagnostics() {
         const threeStatus = window.THREE ? "Loaded" : previewEnabled ? "Loading" : "Disabled";
         const threeBadge = window.THREE ? null : previewEnabled ? { text: "Pending", tone: "warn" } : { text: "N/A", tone: "muted" };
         ui.runtimeRenderer.appendChild(renderRuntimeRow("Three.js", threeStatus, threeBadge));
-        ui.runtimeRenderer.appendChild(renderRuntimeRow("FPS Cap", state.renderFpsCap || "Off"));
+        ui.runtimeRenderer.appendChild(renderRuntimeRow(
+            "Scheduler",
+            state.renderSyncToDisplay ? "Display Sync" : "Timer",
+            state.renderSyncToDisplay ? null : { text: "Approx", tone: "warn" }
+        ));
+        ui.runtimeRenderer.appendChild(renderRuntimeRow("FPS Target", state.renderFpsCap || "Off"));
     }
     if (ui.runtimeEngine) {
         ui.runtimeEngine.innerHTML = "";
@@ -1307,9 +1487,39 @@ function drawRuntimeGraph() {
     ctx.stroke();
 }
 
+function recordFpsSample(now, fps) {
+    if (!Number.isFinite(fps) || fps <= 0) return;
+    fpsSamples.push({ ts: now, fps });
+    const cutoff = now - FPS_SAMPLE_WINDOW_MS;
+    while (fpsSamples.length && fpsSamples[0].ts < cutoff) {
+        fpsSamples.shift();
+    }
+    currentFps = fps;
+    let min = fpsSamples[0]?.fps ?? fps;
+    let max = min;
+    fpsSamples.forEach((sample) => {
+        if (sample.fps < min) min = sample.fps;
+        if (sample.fps > max) max = sample.fps;
+    });
+    fpsMin = min;
+    fpsMax = max;
+}
+
+function formatFpsStat() {
+    if (!Number.isFinite(currentFps) || currentFps <= 0) return "--";
+    const min = Number.isFinite(fpsMin) && fpsMin > 0 ? fpsMin : currentFps;
+    const max = Number.isFinite(fpsMax) && fpsMax > 0 ? fpsMax : currentFps;
+    return `${currentFps.toFixed(1)} (${min.toFixed(1)}-${max.toFixed(1)})`;
+}
+
 function updateDebugTelemetry() {
     if (ui.debugFps) {
-        ui.debugFps.textContent = `FPS: ${Math.round(currentFps)}`;
+        ui.debugFps.textContent = `FPS: ${formatFpsStat()}`;
+    }
+    if (ui.debugRefreshHz) {
+        const hzValue = state.renderSyncToDisplay ? refreshHz : 0;
+        const value = Number.isFinite(hzValue) && hzValue > 0 ? hzValue.toFixed(1) : "--";
+        ui.debugRefreshHz.textContent = `Display Hz: ${value}`;
     }
     if (ui.debugTickRate) {
         const observed = Number.isFinite(tickRateObserved) ? tickRateObserved : 0;
@@ -1681,6 +1891,15 @@ function restoreModuleState() {
             if (Number.isFinite(snapshot.values.renderFpsCap)) {
                 state.renderFpsCap = snapshot.values.renderFpsCap;
             }
+            if (typeof snapshot.values.renderSyncToDisplay === "boolean") {
+                state.renderSyncToDisplay = snapshot.values.renderSyncToDisplay;
+            }
+            if (typeof snapshot.values.formFactorMode === "string") {
+                state.formFactorMode = snapshot.values.formFactorMode;
+            }
+            if (typeof snapshot.values.formFactorManual === "string") {
+                state.formFactorManual = snapshot.values.formFactorManual;
+            }
             if (state.renderFpsCap === 0) {
                 state.renderFpsCap = DEFAULT_RENDER_FPS_CAP;
                 persistModuleState();
@@ -1870,13 +2089,7 @@ function refreshTickLoop() {
         clearInterval(tickIntervalId);
         tickIntervalId = null;
     }
-    if (isModuleEnabled("simulation")) {
-        tickIntervalId = setInterval(() => {
-            if (!state.isLocked) {
-                tickOnce();
-            }
-        }, 1000 / state.tickRate);
-    }
+    tickAccumulator = 0;
 }
 
 function randInt(min, max) {
@@ -2863,7 +3076,6 @@ function loadSnapshot(bypassDebugGuard = false) {
 
 function resetDevAccount() {
     const locked = state.isLocked;
-    const sandbox = state.sandboxEnabled;
     state.tick = 0;
     state.wallet = { cash: 0, credit: 0 };
     state.inventorySlots = [];
@@ -2891,7 +3103,6 @@ function resetDevAccount() {
     localStorage.removeItem(THEME_STORAGE_KEY);
     ThemeManager.restore();
     state.isLocked = locked;
-    state.sandboxEnabled = sandbox;
     refreshToggleButtons();
     updateLists();
 }
@@ -3042,6 +3253,14 @@ function renderContentPacks() {
                 <div class="subtle">${pack.description ?? ""}</div>
             </div>
         `;
+        const packMeta = header.querySelector("div");
+        if (packMeta) {
+            const source = pack.source === "external" || pack.external ? "external" : "built-in";
+            const badgeRow = document.createElement("div");
+            badgeRow.className = "badge-row";
+            badgeRow.appendChild(createSourceBadge(source));
+            packMeta.appendChild(badgeRow);
+        }
         const toggle = document.createElement("button");
         toggle.className = "button ghost";
         toggle.textContent = pack.enabled ? "Enabled" : "Disabled";
@@ -3068,8 +3287,10 @@ function renderContentPacks() {
             if (!prop?.id) return;
             const row = document.createElement("div");
             row.className = "module-prop";
-            const label = document.createElement("span");
-            label.textContent = prop.label ?? prop.id;
+            const labelWrap = createLabelWithInfo(
+                prop.label ?? prop.id,
+                getInfoText(prop)
+            );
             if (prop.type === "boolean") {
                 const input = document.createElement("input");
                 input.type = "checkbox";
@@ -3084,7 +3305,7 @@ function renderContentPacks() {
                     }
                     renderContentPacks();
                 };
-                row.appendChild(label);
+                row.appendChild(labelWrap);
                 row.appendChild(input);
             } else {
                 const input = document.createElement("input");
@@ -3111,7 +3332,7 @@ function renderContentPacks() {
                 input.oninput = () => {
                     value.textContent = input.value;
                 };
-                row.appendChild(label);
+                row.appendChild(labelWrap);
                 row.appendChild(input);
                 row.appendChild(value);
             }
@@ -3142,6 +3363,13 @@ function renderModules() {
                 <div class="subtle">${module.description ?? ""}</div>
             </div>
         `;
+        const moduleMeta = header.querySelector("div");
+        if (moduleMeta) {
+            const badgeRow = document.createElement("div");
+            badgeRow.className = "badge-row";
+            badgeRow.appendChild(createSourceBadge(isExternal ? "external" : "built-in"));
+            moduleMeta.appendChild(badgeRow);
+        }
         const toggle = document.createElement("button");
         toggle.className = "button ghost";
         const enabled = isExternal ? module.enabled !== false : isModuleEnabled(module.id);
@@ -3167,8 +3395,10 @@ function renderModules() {
             if (!prop?.id) return;
             const row = document.createElement("div");
             row.className = "module-prop";
-            const label = document.createElement("span");
-            label.textContent = prop.label ?? prop.id;
+            const labelWrap = createLabelWithInfo(
+                prop.label ?? prop.id,
+                getInfoText(prop)
+            );
             const value = document.createElement("span");
             value.className = "subtle";
             if (prop.type === "boolean") {
@@ -3186,7 +3416,7 @@ function renderModules() {
                     persistModuleState();
                     renderModules();
                 };
-                row.appendChild(label);
+                row.appendChild(labelWrap);
                 row.appendChild(input);
             } else {
                 const input = document.createElement("input");
@@ -3212,7 +3442,7 @@ function renderModules() {
                 input.oninput = () => {
                     value.textContent = input.value;
                 };
-                row.appendChild(label);
+                row.appendChild(labelWrap);
                 row.appendChild(input);
                 row.appendChild(value);
             }
@@ -3279,43 +3509,91 @@ function clearExternalModules() {
     renderModules();
 }
 
-function animate(now) {
-    if (!running) return;
-    const frameCap = Number(state.renderFpsCap) || 0;
-    if (frameCap > 0) {
-        const minFrame = 1000 / frameCap;
-        if (now - lastTick < minFrame) {
-            requestAnimationFrame(animate);
-            return;
-        }
-    }
-    const delta = (now - lastTick) / 1000;
-    if (!Number.isFinite(delta) || delta <= 0) {
-        requestAnimationFrame(animate);
+function scheduleNextFrame(delayMs = 0) {
+    if (!state.renderSyncToDisplay && Number(state.renderFpsCap) > 0) {
+        const delay = Math.max(0, delayMs);
+        setTimeout(() => animate(performance.now()), delay);
         return;
     }
-    lastTick = now;
-    fpsFrames += 1;
-    fpsElapsed += delta;
-    if (fpsElapsed >= 1) {
-        currentFps = fpsFrames / fpsElapsed;
-        updateDebugTelemetry();
-        recordRuntimeFpsSample();
-        fpsFrames = 0;
-        fpsElapsed = 0;
+    requestAnimationFrame(animate);
+}
+
+function animate(now) {
+    if (!running) return;
+    const frameDelta = (now - lastFrameTime) / 1000;
+    lastFrameTime = now;
+    const safeFrameDelta = Number.isFinite(frameDelta) && frameDelta > 0 ? frameDelta : 0;
+    if (state.renderSyncToDisplay && safeFrameDelta > 0) {
+        const hz = 1 / safeFrameDelta;
+        refreshHz = refreshHz > 0 ? refreshHz + (hz - refreshHz) * 0.1 : hz;
     }
-    telemetryElapsed += delta;
+
+    if (isModuleEnabled("simulation")) {
+        if (state.isLocked) {
+            tickAccumulator = 0;
+        } else {
+            const tickInterval = 1 / Math.max(state.tickRate, 0.001);
+            tickAccumulator += safeFrameDelta;
+            const ticksToRun = Math.min(
+                Math.floor(tickAccumulator / tickInterval),
+                MAX_TICKS_PER_FRAME
+            );
+            for (let i = 0; i < ticksToRun; i += 1) {
+                tickOnce();
+                tickAccumulator -= tickInterval;
+            }
+            if (ticksToRun === MAX_TICKS_PER_FRAME) {
+                tickAccumulator = Math.min(tickAccumulator, tickInterval);
+            }
+        }
+    } else {
+        tickAccumulator = 0;
+    }
+
+    const targetFps = Number(state.renderFpsCap) || 0;
+    let shouldRender = true;
+    if (targetFps > 0) {
+        const minFrame = 1 / targetFps;
+        if ((now - lastRenderTime) / 1000 < minFrame) {
+            shouldRender = false;
+        }
+    }
+
+    if (!shouldRender) {
+        telemetryElapsed += safeFrameDelta;
+        if (telemetryElapsed >= 0.5) {
+            telemetryElapsed = 0;
+            updateDebugTelemetry();
+            recordRuntimeFpsSample();
+        }
+        const minFrameMs = targetFps > 0 ? 1000 / targetFps : 0;
+        const delayMs = Math.max(0, minFrameMs - (now - lastRenderTime));
+        scheduleNextFrame(delayMs);
+        return;
+    }
+
+    const renderDelta = (now - lastRenderTime) / 1000;
+    if (Number.isFinite(renderDelta) && renderDelta > 0) {
+        recordFpsSample(now, 1 / renderDelta);
+    }
+    lastRenderTime = now;
+
+    telemetryElapsed += safeFrameDelta;
     if (telemetryElapsed >= 0.5) {
         telemetryElapsed = 0;
         updateDebugTelemetry();
         recordRuntimeFpsSample();
     }
-    updateSkillBars(delta);
+    if (Number.isFinite(renderDelta) && renderDelta > 0) {
+        updateSkillBars(renderDelta);
+    }
     if (modelRenderer && isModuleEnabled("renderer3d")) {
         modelRenderer.render(now / 1000);
     }
     lastUiUpdateCount = uiUpdates;
-    requestAnimationFrame(animate);
+    const minFrameMs = targetFps > 0 ? 1000 / targetFps : 0;
+    const delayMs = Math.max(0, minFrameMs - (performance.now() - lastRenderTime));
+    scheduleNextFrame(delayMs);
 }
 
 function initializeModelPreviews() {
@@ -4127,6 +4405,7 @@ function setupTabs() {
             button.classList.add("active");
             container.querySelector(`.tab-panel[data-panel='${target}']`).classList.add("active");
             refreshModelPreviews();
+            updateDebugOverlayPosition();
         });
     });
 
@@ -4175,6 +4454,7 @@ function setupSplitters() {
     window.addEventListener("pointerup", () => {
         draggingVertical = false;
         draggingHorizontal = false;
+        updateDebugOverlayPosition();
     });
 }
 
@@ -4187,11 +4467,33 @@ function setupControls() {
                 ui.debugOverlay.classList.remove("hidden");
                 initializeModelPreviews();
                 requestAnimationFrame(() => refreshModelPreviews());
+                updateDebugOverlayPosition();
             };
         }
         if (closeDebug && ui.debugOverlay) {
-            closeDebug.onclick = () => ui.debugOverlay.classList.add("hidden");
+            closeDebug.onclick = () => {
+                ui.debugOverlay.classList.add("hidden");
+                updateDebugOverlayPosition();
+            };
         }
+    }
+    if (ui.formFactorAuto) {
+        ui.formFactorAuto.onclick = () => {
+            if (state.formFactorMode === "auto") {
+                setFormFactorMode(state.formFactorManual || "desktop");
+            } else {
+                setFormFactorMode("auto");
+            }
+        };
+    }
+    if (ui.formFactorDesktop) {
+        ui.formFactorDesktop.onclick = () => setFormFactorMode("desktop");
+    }
+    if (ui.formFactorTablet) {
+        ui.formFactorTablet.onclick = () => setFormFactorMode("tablet");
+    }
+    if (ui.formFactorMobile) {
+        ui.formFactorMobile.onclick = () => setFormFactorMode("mobile");
     }
     if (ui.debugControlsToggle) {
         ui.debugControlsToggle.onclick = () => {
@@ -4253,11 +4555,6 @@ function setupControls() {
     if (resetBtn && DEV_MODE) {
         resetBtn.onclick = resetDevAccount;
     }
-    document.getElementById("toggleSandbox").onclick = () => {
-        if (!state.debugControlsEnabled) return;
-        state.sandboxEnabled = !state.sandboxEnabled;
-        refreshToggleButtons();
-    };
 
     if (ui.debugSizeToggle && ui.debugOverlay && ui.debugOverlayPanel) {
         ui.debugSizeToggle.onclick = () => {
@@ -4266,6 +4563,7 @@ function setupControls() {
             ui.debugSizeToggle.textContent = expanded ? "⤡" : "⤢";
             ui.debugSizeToggle.title = expanded ? "Contract debug panel" : "Expand debug panel";
             requestAnimationFrame(() => refreshModelPreviews());
+            updateDebugOverlayPosition();
         };
     }
 
@@ -4401,9 +4699,7 @@ function setupModelUpload() {
 }
 
 function refreshToggleButtons() {
-    const sandboxBtn = document.getElementById("toggleSandbox");
     const lockBtn = document.getElementById("toggleLock");
-    sandboxBtn.textContent = state.sandboxEnabled ? "🧪 Sandbox On" : "🧪 Sandbox Off";
     if (lockBtn) {
         lockBtn.textContent = state.isLocked ? "🔒 Locked" : "🔓 Unlocked";
     }
@@ -4414,9 +4710,6 @@ function refreshToggleButtons() {
     if (ui.debugControlsBadge) {
         ui.debugControlsBadge.textContent = state.debugControlsEnabled ? "Active" : "Locked";
         ui.debugControlsBadge.className = `runtime-badge ${state.debugControlsEnabled ? "runtime-badge-success" : "runtime-badge-warn"}`;
-    }
-    if (sandboxBtn) {
-        sandboxBtn.disabled = !state.debugControlsEnabled;
     }
     if (lockBtn) {
         lockBtn.disabled = !state.debugControlsEnabled;
@@ -4548,11 +4841,20 @@ async function main() {
     refreshToggleButtons();
     renderSkillContext();
     setupTabs();
+    setupSubtabs();
     setupSplitters();
     setupControls();
+    applyFormFactor();
     setDebugControlsEnabled(state.debugControlsEnabled);
     await setupPixi();
     setupPwa();
+    window.addEventListener("resize", () => {
+        if (state.formFactorMode === "auto") {
+            applyFormFactor();
+        } else {
+            updateDebugOverlayPosition();
+        }
+    });
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
             saveSnapshot(true, true);
@@ -4565,8 +4867,9 @@ async function main() {
             hideInventoryPopover();
         }
     });
-    lastTick = performance.now();
-    requestAnimationFrame(animate);
+    lastFrameTime = performance.now();
+    lastRenderTime = lastFrameTime;
+    scheduleNextFrame();
     refreshTickLoop();
 }
 

@@ -149,6 +149,10 @@
      - Interactions: orbit rotate, pan, zoom, and reset to default framing.
      - The expanded viewer must be modular and swappable to support a future “hover-to-expand” surface.
    - Display modes must default to responsive auto selection, while manual overrides remain available for debugging.
+   - FPS targeting (web demo):
+      - Rendering uses a steady target cadence based on a minimum frame interval derived from the FPS target.
+      - Rendering may skip frames to maintain the target; FPS reporting uses render-to-render timing with a rolling min/max window.
+      - Simulation ticks are fixed-step and run independently from rendering cadence.
 
 ## Rollout & Migration
 - Migration steps:

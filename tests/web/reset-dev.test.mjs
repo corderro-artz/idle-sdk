@@ -10,14 +10,12 @@ const htmlPath = path.join(repoRoot, "src", "idle-sdk.web", "index.html");
 const js = fs.readFileSync(jsPath, "utf8");
 const html = fs.readFileSync(htmlPath, "utf8");
 
-test("Reset Dev preserves lock and sandbox state", () => {
+test("Reset Dev preserves lock state", () => {
     assert.match(js, /const locked = state\.isLocked/);
-    assert.match(js, /const sandbox = state\.sandboxEnabled/);
     assert.match(js, /state\.isLocked = locked/);
-    assert.match(js, /state\.sandboxEnabled = sandbox/);
 });
 
-test("Sandbox and Lock toggles include clarification text", () => {
-    assert.match(html, /Sandbox: enables safe experimentation/);
-    assert.match(html, /Lock: pauses simulation ticks/);
+test("Reset Dev button is in Debug Controls section", () => {
+    assert.match(html, /debug-controls-section[\s\S]*resetDevBtn/);
 });
+

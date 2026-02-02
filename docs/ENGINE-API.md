@@ -6,6 +6,7 @@ This document summarizes the public API surface to help developers extend the en
 - SimulationClock: deterministic time source
 - TickScheduler: fixed-step scheduler for simulation ticks
 - OfflineReconciler: reconciles offline time into deterministic ticks
+- Web demo render loop: steady FPS targeting via minimum frame interval gating; render FPS is measured per render and reported with a rolling min/max window. Rendering cadence is independent from fixed-step simulation ticks.
 
 ## Events
 - EventHub: strongly-typed publish/subscribe event bus
@@ -66,6 +67,7 @@ This document summarizes the public API surface to help developers extend the en
 ## Demo App
 - DemoViewModel: sample integration of systems
 - MainWindow/App: Avalonia UI host
+- Web demo: FPS target uses a steady cadence (min-frame gating) rather than a token-bucket or uncapped render loop. This avoids bursty frames and keeps stable rendering when the display refresh rate allows it.
 
 ## Extension Guidance
 - Prefer content packs for data-only additions.
