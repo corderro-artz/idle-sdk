@@ -32,6 +32,7 @@
         "policy-update",
         "policy-validate",
         "report-bundle",
+        "serve-demo-python",
         "self-audit",
         "spec-start",
         "sync-wiki",
