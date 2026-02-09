@@ -135,7 +135,7 @@
 
 ## Demo Implementation Requirements
 - Demo goal: Minimal Melvor-style idle clone showcasing engine capabilities with a game view area reserved for future background/character/equipment sprites.
-- UI stack: Avalonia desktop application.
+- UI stack: renderer-agnostic demo shell.
 - Game view: Fixed panel with placeholder background and character silhouette; exposes scene layer entries and diffs.
 - Required feature wiring (minimum):
    - Actions + Skills + Combat (tick-based loop, XP gains, basic combat tick output).

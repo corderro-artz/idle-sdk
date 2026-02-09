@@ -65,8 +65,6 @@ This document summarizes the public API surface to help developers extend the en
 - RuntimeInspector: state inspection utilities
 
 ## Demo App
-- DemoViewModel: sample integration of systems
-- MainWindow/App: Avalonia UI host
 - Web demo: FPS target uses a steady cadence (min-frame gating) rather than a token-bucket or uncapped render loop. This avoids bursty frames and keeps stable rendering when the display refresh rate allows it.
 
 ## Extension Guidance

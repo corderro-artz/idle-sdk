@@ -9,7 +9,7 @@ Engine Feature Roadmap — idle-sdk
 Define the ordered feature roadmap needed to harden and expand the engine for production and demo-grade usage without introducing game-specific logic.
 
 ## Context & Assumptions
-- Current state: Core engine systems and Avalonia demo are functional.
+- Current state: Core engine systems are functional.
 - Constraints (legal, security, compliance, budget, time): Phased delivery, full test coverage, inline documentation, and CI/CD.
 - Assumptions (explicit and testable): The engine remains game-agnostic; UI is a demo shell only.
 

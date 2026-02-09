@@ -25,7 +25,7 @@
 - Added developer sandbox core with runtime inspector and tests.
 - Added account/profile system core with tests.
 - Added offline progression reconciler with tests.
-- Added Avalonia demo app wiring engine features with tests.
+- Added demo app wiring engine features with tests.
 - Added layered generator, crafting, trade, and compendium core systems with tests.
 - Refined demo UI layout for reduced clutter.
 - Added data pack loader, replay runner, and snapshot service with demo save/load.
