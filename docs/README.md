@@ -2,7 +2,6 @@
 
 ## Contents
 - Architecture decisions: docs/ARCHITECTURE-DECISIONS.md
-- Wiki mirrors: docs/wiki/
 - Specification: spec/SPECIFICATION.md
 - Roadmap: plans/ENGINE-ROADMAP.md
 - Content packs: docs/CONTENT-PACKS.md
@@ -12,6 +11,3 @@
 - Modding guide: docs/MODDING.md
 - Assets & sprites: docs/ENGINE-API.md
 - Generated API docs: docs/GENERATED-API.md
-
-## Contributing Docs
-Documentation updates should align with governance requirements and keep the wiki mirror in sync.

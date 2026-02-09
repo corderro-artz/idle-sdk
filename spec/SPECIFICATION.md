@@ -36,7 +36,7 @@
    - NFR-2 (security): No arbitrary code execution from data packs; plugin loading must be explicit and versioned.
    - NFR-3 (reliability): Deterministic playback must produce identical results from the same seed and input stream.
 - Constraints:
-   - Policy constraints: Full test coverage is required; inline documentation is required; CI/CD must be enforced.
+   - Quality constraints: Full test coverage is required; inline documentation is required; CI/CD must be enforced.
    - Platform constraints: .NET 10 target, desktop-first with web compatibility.
 
 ## Interfaces

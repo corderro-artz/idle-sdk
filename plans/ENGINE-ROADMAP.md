@@ -10,7 +10,7 @@ Define the ordered feature roadmap needed to harden and expand the engine for pr
 
 ## Context & Assumptions
 - Current state: Core engine systems and Avalonia demo are functional.
-- Constraints (legal, security, compliance, budget, time): Governance mandates phased delivery, full test coverage, inline documentation, and CI/CD.
+- Constraints (legal, security, compliance, budget, time): Phased delivery, full test coverage, inline documentation, and CI/CD.
 - Assumptions (explicit and testable): The engine remains game-agnostic; UI is a demo shell only.
 
 ## Goals
@@ -32,7 +32,7 @@ Define the ordered feature roadmap needed to harden and expand the engine for pr
 
 ## Requirements Traceability
 - Spec reference(s): [spec/SPECIFICATION.md](spec/SPECIFICATION.md)
-- Policy constraints: Full test coverage, inline documentation, CI/CD enforcement, phased delivery.
+- Quality constraints: Full test coverage, inline documentation, CI/CD enforcement, phased delivery.
 
 ## Phases & Milestones
 - Phase A: Hardening & Determinism
@@ -83,7 +83,7 @@ Define the ordered feature roadmap needed to harden and expand the engine for pr
 ## Quality & Testing
 - Test strategy: deterministic unit/integration + replay fixtures.
 - Required test types: unit, integration, acceptance.
-- Coverage expectations: 100% per policy.
+- Coverage expectations: 100% target.
 
 ## Delivery Plan
 - Timeline: iterative by phase, per milestone gates.
@@ -93,7 +93,7 @@ Define the ordered feature roadmap needed to harden and expand the engine for pr
 
 ## Documentation Plan
 - Required docs: engine API docs, data pack schema docs, modding guides.
-- Update targets: README, wiki, spec, demo instructions.
+- Update targets: README, spec, demo instructions.
 
 ## Open Questions
 - Confirm tooling scope for schema generation (CLI vs in-app).

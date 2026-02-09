@@ -1,6 +1,6 @@
 # Plan — Phase 1 Specification & Architecture
 
-> This plan defines the execution details for Phase 1 per governance requirements.
+> This plan defines the execution details for Phase 1.
 
 ## Title
 Phase 1: Specification & Architecture for idle-sdk Engine Core
@@ -10,7 +10,7 @@ The engine requires a machine-first, testable specification and an explicit arch
 
 ## Context & Assumptions
 - Current state: Narrative specification exists; no implementation code has begun.
-- Constraints (legal, security, compliance, budget, time): Governance policy mandates full test coverage, inline documentation, CI/CD, and phased delivery.
+- Constraints (legal, security, compliance, budget, time): Full test coverage, inline documentation, CI/CD, and phased delivery.
 - Assumptions (explicit and testable): The engine targets .NET 10 and must support desktop-first and web-compatible rendering via an abstraction layer.
 
 ## Goals
@@ -31,10 +31,10 @@ The engine requires a machine-first, testable specification and an explicit arch
 
 ## Requirements Traceability
 - Spec reference(s): [spec/SPECIFICATION.md](spec/SPECIFICATION.md)
-- Policy constraints: Full test coverage, inline documentation, CI/CD enforcement, phased delivery.
+- Quality constraints: Full test coverage, inline documentation, CI/CD enforcement, phased delivery.
 
 ## Phases & Milestones
-- Phase 1: Specification & Architecture; artifact(s): machine-first spec and plan; exit criteria: spec complete, ledgers updated.
+- Phase 1: Specification & Architecture; artifact(s): machine-first spec and plan; exit criteria: spec complete.
 - Phase 2: Scaffolding; artifact(s): solution structure, module stubs.
 - Phase 3: Core Implementation; artifact(s): engine spine systems.
 - Milestones: Phase 1 sign-off enables scaffolding start.
@@ -43,9 +43,9 @@ The engine requires a machine-first, testable specification and an explicit arch
 - Tasks (ordered):
 	1. Convert narrative spec into machine-first template.
 	2. Define architecture components and interfaces.
-	3. Update ledgers and changelog.
+	3. Update changelog.
 - Dependencies:
-	- Governance policy must be present and active.
+	- Specification must be current and approved.
 - Risks & mitigations:
 	- Risk: Spec ambiguities block implementation.
 		Mitigation: Log open questions explicitly and resolve before Phase 2.
@@ -53,7 +53,7 @@ The engine requires a machine-first, testable specification and an explicit arch
 ## Quality & Testing
 - Test strategy: Define test coverage expectations in spec; implement tests in Phase 4.
 - Required test types (unit/integration/acceptance): Unit, integration, acceptance.
-- Coverage expectations (if policy-defined): 100% coverage target.
+- Coverage expectations: 100% coverage target.
 
 ## Delivery Plan
 - Timeline: Phase 1 complete within current workstream.
@@ -62,8 +62,8 @@ The engine requires a machine-first, testable specification and an explicit arch
 - Acceptance checkpoints: Spec reviewed and accepted by maintainers.
 
 ## Documentation Plan
-- Required docs: Spec updated; ledger and changelog entries.
-- Update targets (README, wiki, API docs): Wiki sync required after governance/doc changes.
+- Required docs: Spec updated; changelog entries.
+- Update targets (README, API docs): Update alongside spec changes.
 
 ## Open Questions
 - Confirm renderer abstraction strategy before Phase 2.
